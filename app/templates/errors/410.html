@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Certificate PDF expired · GAMKERS PORTAL{% endblock %}
+{% block content %}
+<section class="submitted-wrap">
+  <p class="eyebrow">PDF DOWNLOAD PERIOD ENDED</p>
+  <h1>This certificate PDF has expired</h1>
+  <p class="muted">Certificate details remain available in the permanent public verification record.</p>
+  <a class="button button-primary mt-5" href="{{ url_for('certificates.verify_certificate') }}">Verify a certificate</a>
+</section>
+{% endblock %}

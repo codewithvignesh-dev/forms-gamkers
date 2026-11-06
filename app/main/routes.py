@@ -40,4 +40,7 @@ def dashboard():
         member_count=member_count,
         response_counts=response_counts,
         total_responses=total_responses,
+        can_manage_forms=current_user.has_permission("forms.manage"),
+        can_view_responses=current_user.has_permission("responses.view"),
+        can_export_responses=current_user.has_permission("responses.export"),
     )

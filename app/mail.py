@@ -6,7 +6,6 @@ import smtplib
 import ssl
 from datetime import datetime, timezone
 from email.message import EmailMessage
-from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -28,31 +27,6 @@ EMAIL_ATTRIBUTES = {"a": ["href", "title"]}
 EMAIL_PROTOCOLS = {"http", "https", "mailto"}
 
 
-class _PlainTextExtractor(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.parts = []
-        self.ignored_depth = 0
-
-    def handle_starttag(self, tag, _attrs):
-        if tag in {"script", "style"}:
-            self.ignored_depth += 1
-        elif tag in {"br", "hr"}:
-            self.parts.append("\n")
-        elif tag in {"p", "div", "li", "blockquote", "h1", "h2", "h3"}:
-            self.parts.append("\n")
-
-    def handle_endtag(self, tag):
-        if tag in {"script", "style"} and self.ignored_depth:
-            self.ignored_depth -= 1
-        elif tag in {"p", "div", "li", "blockquote", "h1", "h2", "h3"}:
-            self.parts.append("\n")
-
-    def handle_data(self, data):
-        if not self.ignored_depth:
-            self.parts.append(data)
-
-
 def _sanitize_email_html(content, content_format):
     if content_format == "markdown":
         content = markdown.markdown(content, extensions=["extra", "nl2br"])
@@ -70,12 +44,6 @@ def _sanitize_email_html(content, content_format):
         strip=True,
         strip_comments=True,
     )
-
-
-def _plain_text_from_html(content):
-    parser = _PlainTextExtractor()
-    parser.feed(content)
-    return re.sub(r"\n{3,}", "\n\n", "".join(parser.parts)).strip()
 
 
 def _email_css_for_inliner(css):
@@ -116,6 +84,9 @@ def _email_css_for_inliner(css):
         "font-sans": "Arial, Helvetica, sans-serif",
         "font-mono": "monospace",
         "font-weight-bold": "700",
+        "font-weight-extrabold": "800",
+        "font-weight-semibold": "600",
+        "radius-2xl": "1rem",
         "radius-xl": "0.75rem",
         "radius-lg": "0.5rem",
         "radius-md": "0.375rem",
@@ -145,9 +116,7 @@ def _email_css_for_inliner(css):
             ),
             css,
         )
-    return css.replace("text-decoration-line:", "text-decoration:").replace(
-        "overflow-wrap:", "word-wrap:"
-    )
+    return css.replace("text-decoration-line:", "text-decoration:")
 
 
 def _calendar_utc_datetime(value, event_timezone):
@@ -207,7 +176,7 @@ def _calendar_invite(calendar_event):
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//Forms Gamkers//Event Confirmation//EN",
+        "PRODID:-//GAMKERS PORTAL//Event Confirmation//EN",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         "BEGIN:VEVENT",
@@ -243,7 +212,8 @@ def _styled_email(
     email_html = render_template(
         "emails/message.html",
         organization_name=getattr(organization, "name", None)
-        or current_app.config.get("DEFAULT_SMTP_SENDER", "Forms Gamkers"),
+        or current_app.config.get("DEFAULT_SMTP_SENDER", "GAMKERS PORTAL"),
+        subject=subject,
         message_html=Markup(safe_html),
         event_details=event_details,
         event_title=event_title,
@@ -265,29 +235,18 @@ def _styled_email(
     message["Subject"] = subject
     message["From"] = settings["sender"]
     message["To"] = recipient
-    plain_text = _plain_text_from_html(safe_html)
-    if event_details:
-        event_text = ["", "", f"EVENT: {event_title}"]
-        if event_details.get("date"):
-            event_text.append(
-                f"Date and time: {event_details['date']} · "
-                f"{event_details['start_time']}"
-                + (
-                    f"–{event_details['end_time']}"
-                    if event_details.get("end_time")
-                    else ""
-                )
-                + f" {event_details['timezone_label']} ({event_details['timezone']})"
-            )
-        if event_details.get("location"):
-            event_text.append(f"Location: {event_details['location']}")
-        if event_url:
-            event_text.append(f"Event details: {event_url}")
-        if calendar_url:
-            event_text.append(f"Add to Google Calendar: {calendar_url}")
-        plain_text += "\n" + "\n".join(event_text)
-    message.set_content(plain_text)
-    message.add_alternative(styled_html, subtype="html")
+    message.set_content(styled_html, subtype="html")
+    logo_path = Path(current_app.static_folder) / "img" / "email-logo.png"
+    if not logo_path.is_file():
+        raise RuntimeError("The GAMKERS Portal email logo is missing.")
+    message.add_related(
+        logo_path.read_bytes(),
+        maintype="image",
+        subtype="png",
+        cid="<gamkers-portal-logo>",
+        filename="gamkers-portal-logo.png",
+        disposition="inline",
+    )
     return message, settings, ssl.create_default_context()
 
 

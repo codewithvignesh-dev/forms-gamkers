@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Forms Gamkers — Forms that move work forward{% endblock %}
+{% block title %}GAMKERS PORTAL · Internal team workspace{% endblock %}
 {% block content %}
 <section class="hero-shell">
   <div class="hero-grid"></div>
   <div class="hero-copy">
-    <p class="eyebrow"><span class="status-dot"></span> A CLEARER WAY TO COLLECT, CONNECT & ACT</p>
-    <h1>Better forms.<br><span class="accent-text">Stronger follow-through.</span></h1>
-    <p class="hero-description">Bring forms, responses and team workflows into one focused workspace. Create a form, share it with confidence and give every respondent a thoughtful confirmation.</p>
+    <p class="eyebrow"><span class="status-dot"></span> GAMKERS INTERNAL PRODUCT</p>
+    <h1>One portal.<br><span class="accent-text">Better team workflows.</span></h1>
+    <p class="hero-description">A private workspace for the GAMKERS team to build forms, review responses, manage certificates, and send thoughtful updates.</p>
     <div class="hero-actions">
-      <a class="button button-primary" href="{{ url_for('auth.signup') }}">Create your workspace <span aria-hidden="true">↗</span></a>
-      <a class="button button-quiet" href="#platform">Explore the platform <span aria-hidden="true">↓</span></a>
+      <a class="button button-primary" href="{{ url_for('auth.login') }}">Sign in to the portal <span aria-hidden="true">↗</span></a>
+      <a class="button button-quiet" href="#platform">Explore features <span aria-hidden="true">↓</span></a>
     </div>
-    <div class="hero-proof"><span class="proof-check">✓</span> Organisation-owned workspace <span class="proof-separator">·</span> Flexible forms <span class="proof-separator">·</span> Personal confirmations</div>
+    <div class="hero-proof"><span class="proof-check">✓</span> Internal access only <span class="proof-separator">·</span> Role-based permissions <span class="proof-separator">·</span> Team-owned workflows</div>
     <div class="hero-trust-row"><span>BUILT FOR TEAMS THAT VALUE</span><b>Clarity</b><b>Ownership</b><b>Momentum</b></div>
   </div>
   <div class="hero-card" aria-label="Example form preview">
@@ -43,8 +43,8 @@
   <div class="feature-grid">
     <article class="feature-card"><span class="feature-icon">01</span><h3>Build forms your way</h3><p>Create surveys, registrations, feedback forms and requests with flexible question types in a straightforward editor.</p><span class="feature-tag">Create with clarity</span></article>
     <article class="feature-card"><span class="feature-icon">02</span><h3>Close the loop instantly</h3><p>Set the confirmation subject and message. Respondents receive a personal email after submitting a published form.</p><span class="feature-tag">Respond with care</span></article>
-    <article class="feature-card"><span class="feature-icon">03</span><h3>Keep teams aligned</h3><p>Bring forms and responses into an organisation workspace with distinct administrator and member roles.</p><span class="feature-tag">Work as one team</span></article>
-    <article class="feature-card"><span class="feature-icon">04</span><h3>Make email your own</h3><p>Organisation admins can configure SMTP delivery so confirmation and invitation emails use the organisation's email setup.</p><span class="feature-tag">Own your communication</span></article>
+    <article class="feature-card"><span class="feature-icon">03</span><h3>Keep teams aligned</h3><p>Manage an internal workspace with admin, developer, and contributor roles and permissions that the admin can change.</p><span class="feature-tag">Work as one team</span></article>
+    <article class="feature-card"><span class="feature-icon">04</span><h3>Send bulk updates</h3><p>Import a CSV contact list and send individually addressed updates with optional name personalisation.</p><span class="feature-tag">Reach the right people</span></article>
   </div>
 </section>
 
@@ -75,37 +75,33 @@
       <p class="demo-caption">A simple example of the journey from a blank page to a submitted response.</p>
     </div>
   </div>
-  <figure class="workflow-gif-card reveal-on-scroll">
-    <img src="{{ url_for('static', filename='images/gamkers-first-form-guide.gif') }}" alt="Animated three-step guide: plan your form, add questions, then publish and share it" loading="lazy" width="900" height="420">
-    <figcaption><span>ANIMATED QUICK GUIDE</span> Watch the basic journey repeat: plan → build → publish.</figcaption>
-  </figure>
 </section>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 /* Learning Centre styles are intentionally scoped to this page section. */
-.learning-section { padding: 104px max(5vw, 22px); border-top: 1px solid #1c271f; background: #090d0a; }
+.learning-section { padding: 104px max(5vw, 22px); border-top: 1px solid #29332b; background: #0e130f; }
 .learning-section .learning-heading { max-width: 760px; margin: 0 auto 42px; text-align: center; }
-.learning-section .learning-heading .eyebrow { color: #22e879; }
+.learning-section .learning-heading .eyebrow { color: #22c55e; }
 .learning-section .learning-heading h2 { margin: 12px 0; font-size: clamp(34px, 5vw, 58px); line-height: 1.06; letter-spacing: -.055em; }
-.learning-section .learning-heading > p:last-child { max-width: 650px; margin: 14px auto 0; color: #a5b2a8; line-height: 1.8; }
+.learning-section .learning-heading > p:last-child { max-width: 650px; margin: 14px auto 0; color: #a1aaa2; line-height: 1.8; }
 .learning-section .learning-grid { max-width: 1120px; margin: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
-.learning-section .learning-card { min-width: 0; overflow: hidden; border: 1px solid #29382d; border-radius: 18px; background: linear-gradient(150deg, #121b15, #0c120e); transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; }
-.learning-section .learning-card:hover { transform: translateY(-5px); border-color: #4b875b; box-shadow: 0 18px 45px #0005; }
-.learning-section .learning-art { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #101a13; border-bottom: 1px solid #26362b; }
+.learning-section .learning-card { min-width: 0; overflow: hidden; border: 1px solid #29332b; border-radius: 18px; background: linear-gradient(150deg, #151a16, #111511); transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; }
+.learning-section .learning-card:hover { transform: translateY(-3px); border-color: #22c55e; box-shadow: 0 14px 36px #00000066; }
+.learning-section .learning-art { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #0e130f; border-bottom: 1px solid #29332b; }
 .learning-section .learning-card-body { padding: 23px; }
-.learning-section .learning-label { color: #70d88e; font-size: 9px; font-weight: 800; letter-spacing: .14em; }
-.learning-section .learning-card h3 { margin: 10px 0 8px; color: #f1f5f1; font-size: 19px; letter-spacing: -.025em; }
-.learning-section .learning-card p { margin: 0 0 16px; color: #a5b2a8; font-size: 13px; line-height: 1.75; }
-.learning-section .learning-details { border-top: 1px solid #26362b; padding-top: 13px; }
-.learning-section .learning-details summary { color: #25e77d; cursor: pointer; font-size: 12px; font-weight: 750; list-style: none; }
+.learning-section .learning-label { color: #22c55e; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.learning-section .learning-card h3 { margin: 10px 0 8px; color: #f3f4f6; font-size: 19px; letter-spacing: -.025em; }
+.learning-section .learning-card p { margin: 0 0 16px; color: #a1aaa2; font-size: 14px; line-height: 1.75; }
+.learning-section .learning-details { border-top: 1px solid #29332b; padding-top: 13px; }
+.learning-section .learning-details summary { color: #22c55e; cursor: pointer; font-size: 13px; font-weight: 700; list-style: none; }
 .learning-section .learning-details summary::-webkit-details-marker { display: none; }
 .learning-section .learning-details summary::after { content: '＋'; float: right; }
 .learning-section .learning-details[open] summary::after { content: '−'; }
-.learning-section .learning-details ul { margin: 12px 0 2px; padding-left: 18px; color: #b3c0b6; font-size: 12px; line-height: 1.9; }
-.learning-section .learning-footer { max-width: 1120px; margin: 24px auto 0; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 22px; border: 1px solid #294232; border-radius: 14px; background: #101a13; }
-.learning-section .learning-footer p { margin: 0; color: #c1cec4; font-size: 13px; line-height: 1.7; }
-.learning-section .learning-footer strong { color: #f1f5f1; }
-.learning-section .learning-start { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 9px; padding: 12px 17px; border-radius: 8px; background: #22e879; color: #061009; font-size: 12px; font-weight: 800; }
+.learning-section .learning-details ul { margin: 12px 0 2px; padding-left: 18px; color: #b4beb6; font-size: 13px; line-height: 1.9; }
+.learning-section .learning-footer { max-width: 1120px; margin: 24px auto 0; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 22px; border: 1px solid #294431; border-radius: 14px; background: #111511; }
+.learning-section .learning-footer p { margin: 0; color: #b4beb6; font-size: 14px; line-height: 1.7; }
+.learning-section .learning-footer strong { color: #f3f4f6; }
+.learning-section .learning-start { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 9px; padding: 12px 17px; border-radius: 8px; background: #22c55e; color: #052e16; font-size: 13px; font-weight: 700; }
 @media (max-width: 850px) { .learning-section .learning-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .learning-section { padding: 72px 19px; } .learning-section .learning-grid { grid-template-columns: 1fr; } .learning-section .learning-footer { align-items: flex-start; flex-direction: column; } }
 @media (prefers-reduced-motion: reduce) { .learning-section .learning-card { transition: none; } .learning-section .learning-card:hover { transform: none; } }
@@ -118,7 +114,7 @@
   </div>
   <div class="learning-grid">
     <article class="learning-card reveal-on-scroll">
-      <img class="learning-art" src="{{ url_for('static', filename='images/learning-plan-form.svg') }}" alt="Illustration of planning a form with a title, questions and a checklist" loading="lazy" width="640" height="360">
+      <img class="learning-art" src="{{ url_for('static', filename='img/learning-plan-form.svg') }}" alt="Illustration of planning a form with a title, questions and a checklist" loading="lazy" width="640" height="360">
       <div class="learning-card-body">
         <span class="learning-label">GUIDE 01 · PLAN YOUR FORM</span>
         <h3>Start with a clear purpose</h3>
@@ -127,7 +123,7 @@
       </div>
     </article>
     <article class="learning-card reveal-on-scroll">
-      <img class="learning-art" src="{{ url_for('static', filename='images/learning-question-types.svg') }}" alt="Illustration showing text, multiple-choice and checkbox question types" loading="lazy" width="640" height="360">
+      <img class="learning-art" src="{{ url_for('static', filename='img/learning-question-types.svg') }}" alt="Illustration showing text, multiple-choice and checkbox question types" loading="lazy" width="640" height="360">
       <div class="learning-card-body">
         <span class="learning-label">GUIDE 02 · WRITE QUESTIONS</span>
         <h3>Make every question easy</h3>
@@ -136,7 +132,7 @@
       </div>
     </article>
     <article class="learning-card reveal-on-scroll">
-      <img class="learning-art" src="{{ url_for('static', filename='images/learning-publish-review.svg') }}" alt="Illustration of a published form, a response notification and a confirmation message" loading="lazy" width="640" height="360">
+      <img class="learning-art" src="{{ url_for('static', filename='img/learning-publish-review.svg') }}" alt="Illustration of a published form, a response notification and a confirmation message" loading="lazy" width="640" height="360">
       <div class="learning-card-body">
         <span class="learning-label">GUIDE 03 · PUBLISH & REVIEW</span>
         <h3>Know what happens next</h3>
@@ -147,7 +143,7 @@
   </div>
   <div class="learning-footer reveal-on-scroll">
     <p><strong>Ready to put these ideas into practice?</strong><br>Start with a simple form. You can save your work and improve it as you learn.</p>
-    <a class="learning-start" href="{{ url_for('auth.signup') }}">Start building <span aria-hidden="true">↗</span></a>
+    <a class="learning-start" href="{{ url_for('auth.login') }}">Open the portal <span aria-hidden="true">↗</span></a>
   </div>
 </section>
 
@@ -156,7 +152,7 @@
     <p class="eyebrow">A WORKFLOW THAT MAKES SENSE</p>
     <h2>Less tool-hopping.<br><span class="accent-text">More useful work.</span></h2>
     <p>Forms are only the beginning. The value comes from what happens after someone clicks submit. Gamkers keeps the essential steps close together, so your team can focus on the information and the people behind it.</p>
-    <a class="text-link" href="{{ url_for('auth.signup') }}">Bring your team together <span>↗</span></a>
+    <a class="text-link" href="{{ url_for('auth.login') }}">Sign in to continue <span>↗</span></a>
   </div>
   <div class="workflow-list">
     <article class="workflow-step"><span>01</span><div><h3>Create</h3><p>Start with a draft and add the questions that fit your process.</p></div><b>↗</b></article>
@@ -168,20 +164,18 @@
 
 <section class="comparison-section" id="compare">
   <div class="section-heading">
-    <p class="eyebrow">A MORE FOCUSED CHOICE</p>
-    <h2>How Gamkers fits<br><span class="accent-text">alongside familiar tools.</span></h2>
-    <p>Google Forms and Microsoft Forms are established general-purpose tools. Gamkers takes a more focused approach for teams that want an organisation-owned form workspace and configurable email follow-through.</p>
+    <p class="eyebrow">GAMKERS INTERNAL PRODUCT</p>
+    <h2>One place for the work<br><span class="accent-text">behind every response.</span></h2>
+    <p>A private, team-managed workspace. Your administrator controls who can access each capability.</p>
   </div>
   <div class="comparison-wrap">
-    <div class="comparison-head"><span>CAPABILITY</span><span class="comparison-brand">GAMKERS FORMS</span><span>GOOGLE FORMS</span><span>MICROSOFT FORMS</span></div>
-    <div class="comparison-row"><b>Organisation workspace</b><span class="comparison-yes">✓ Built-in workspace</span><span>Google account ecosystem</span><span>Microsoft 365 ecosystem</span></div>
-    <div class="comparison-row"><b>Team roles</b><span class="comparison-yes">✓ Admin & member roles</span><span>Sharing permissions</span><span>Microsoft 365 permissions</span></div>
-    <div class="comparison-row"><b>Confirmation email content</b><span class="comparison-yes">✓ Configurable subject & message</span><span>Available options depend on setup</span><span>Available options depend on setup</span></div>
-    <div class="comparison-row"><b>Organisation SMTP settings</b><span class="comparison-yes">✓ Admin-configured SMTP</span><span>Uses Google services</span><span>Uses Microsoft services</span></div>
-    <div class="comparison-row"><b>Deployment approach</b><span class="comparison-yes">✓ Can be self-hosted</span><span>Hosted service</span><span>Hosted service</span></div>
-    <div class="comparison-note"><span class="comparison-note-icon">i</span><p>This is a feature-and-positioning comparison, not a claim that Gamkers replaces every feature in Google or Microsoft products. Capabilities and licensing in those platforms can vary by account, plan and administrator settings.</p></div>
+    <div class="comparison-head"><span>ROLE</span><span class="comparison-brand">WORKFLOW ACCESS</span><span>ACCOUNT CONTROL</span><span>PERMISSIONS</span></div>
+    <div class="comparison-row"><b>Admin</b><span class="comparison-yes">✓ Full portal control</span><span>Single provisioned account</span><span>Always retains access management</span></div>
+    <div class="comparison-row"><b>Developer</b><span>Build and operate workflows</span><span>Admin invitation</span><span>Admin-configurable</span></div>
+    <div class="comparison-row"><b>Contributor</b><span>Participate in team workflows</span><span>Admin invitation</span><span>Admin-configurable</span></div>
+    <div class="comparison-note"><span class="comparison-note-icon">i</span><p>This is an internal product. There is no public signup, customer workspace creation, or self-service subscription.</p></div>
   </div>
-  <div class="comparison-bottom"><div><h3>Choose the workflow that fits your team.</h3><p>Prefer a focused workspace with configurable organisation email delivery? Take a closer look at Gamkers.</p></div><a class="button button-primary" href="{{ url_for('auth.signup') }}">Try Gamkers <span>↗</span></a></div>
+  <div class="comparison-bottom"><div><h3>Built for the GAMKERS team.</h3><p>This is an internal product. Access is provisioned and managed by the portal administrator.</p></div><a class="button button-primary" href="{{ url_for('auth.login') }}">Sign in <span>↗</span></a></div>
 </section>
 
 <section class="audience-section">
@@ -198,7 +192,7 @@
 </section>
 
 <section class="cta-band">
-  <div><p class="eyebrow">MAKE EVERY RESPONSE COUNT</p><h2>Give good information a better place to go.</h2><p>Start with one form. Bring your team in when you're ready.</p></div>
-  <a class="button button-primary" href="{{ url_for('auth.signup') }}">Create your workspace <span>↗</span></a>
+  <div><p class="eyebrow">GAMKERS PORTAL</p><h2>Give good information a better place to go.</h2><p>Sign in with your GAMKERS team account to get started.</p></div>
+  <a class="button button-primary" href="{{ url_for('auth.login') }}">Sign in to GAMKERS PORTAL <span>↗</span></a>
 </section>
 {% endblock %}

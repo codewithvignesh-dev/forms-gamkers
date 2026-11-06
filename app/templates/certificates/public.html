@@ -1,20 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Certificate {{ certificate.certificate_number }} · Gamkers{% endblock %}
+{% block title %}Certificate {{ certificate.certificate_number }} · GAMKERS PORTAL{% endblock %}
 {% block content %}
 <section class="public-certificate-wrap">
   <div class="panel public-certificate-card">
-    <p class="eyebrow">VERIFIED DIGITAL CERTIFICATE</p>
+    <p class="eyebrow">OFFICIAL DIGITAL CERTIFICATE</p>
     <h1>{{ batch.title }}</h1>
-    <p class="muted">Previewing the exact PDF certificate that will be downloaded.</p>
+    <p class="certificate-recipient">Awarded to <strong>{{ certificate.recipient_name }}</strong></p>
+    <p class="muted">Issued by {{ certificate.college_name }} on {{ certificate.created_at.strftime('%d %B %Y') }}.</p>
+    {% if pdf_available %}
     <iframe
       class="certificate-preview-frame"
       src="{{ url_for('certificates.public_certificate_pdf', token=certificate.public_token) }}"
       title="Certificate preview for {{ certificate.recipient_name }}"
     ></iframe>
     <a class="button button-primary certificate-download" href="{{ url_for('certificates.download_public_certificate', token=certificate.public_token) }}">Download your certificate <span>↓</span></a>
+    <p class="certificate-expiry-note">The PDF is available until {{ certificate.pdf_expires_at.strftime('%d %B %Y') if certificate.pdf_expires_at else 'further notice' }}. Verification details remain available permanently.</p>
+    {% else %}
+    <p class="certificate-expired">The PDF download period has ended. The certificate record remains available for verification.</p>
+    {% endif %}
     <p class="certificate-number">CERTIFICATE NUMBER <strong>{{ certificate.certificate_number }}</strong></p>
-    <p class="certificate-expiry-note">This verification link does not expire.</p>
+    <a class="button button-outline" href="{{ url_for('certificates.verify_certificate', number=certificate.certificate_number) }}">Verify certificate details</a>
   </div>
-  <p class="powered-by">Issued with <span class="brand-mark">✳</span> Forms Gamkers</p>
+  <p class="powered-by">Issued with <span class="brand-mark">✳</span> GAMKERS PORTAL</p>
 </section>
 {% endblock %}

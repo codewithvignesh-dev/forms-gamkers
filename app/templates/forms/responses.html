@@ -2,11 +2,11 @@
 {% block title %}Responses · {{ form.title }}{% endblock %}
 {% block content %}
 <section class="workspace-wrap">
-  <div class="editor-heading"><div><a class="back-link" href="{{ url_for('main.dashboard') }}">← Workspace</a><p class="eyebrow">FORM RESPONSES</p><h1>{{ form.title }}</h1></div><a class="button button-outline button-small" href="{{ url_for('forms.edit_form', form_id=form.id) }}">Edit form</a></div>
+  <div class="editor-heading"><div><a class="back-link" href="{{ url_for('main.dashboard') }}">← Workspace</a><p class="eyebrow">FORM RESPONSES</p><h1>{{ form.title }}</h1></div>{% if current_user.has_permission('forms.manage') %}<a class="button button-outline button-small" href="{{ url_for('forms.edit_form', form_id=form.id) }}">Edit form</a>{% endif %}</div>
   <div class="response-summary">
     <div><strong>{{ submissions|length }}</strong> <span>total responses</span></div>
     {% if submissions %}
-      <a class="button button-primary button-small" href="{{ url_for('forms.export_csv', form_id=form.id) }}">{{ 'Export certificate-ready CSV ↓' if form.parent_form_id else 'Export CSV ↓' }}</a>
+      {% if current_user.has_permission('responses.export') %}<a class="button button-primary button-small" href="{{ url_for('forms.export_csv', form_id=form.id) }}">{{ 'Export certificate-ready CSV ↓' if form.parent_form_id else 'Export CSV ↓' }}</a>{% endif %}
     {% endif %}
   </div>
   {% if submissions %}

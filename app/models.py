@@ -1,4 +1,4 @@
-from app.auth.models import Invitation, PasswordReset, User
+from app.auth.models import Invitation, PasswordReset, RolePermission, User
 from app.certificates.models import CertificateBatch, CertificateRecord, CertificateUpload
 from app.extensions import db, login_manager
 from app.forms.models import Form, Submission
@@ -22,6 +22,7 @@ __all__ = [
     "Invitation",
     "Organization",
     "PasswordReset",
+    "RolePermission",
     "Submission",
     "User",
     "utcnow",

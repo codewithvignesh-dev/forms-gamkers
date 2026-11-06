@@ -1,5 +1,7 @@
 from html import escape
 from pathlib import Path
+import logging
+from datetime import timedelta
 
 import pandas as pd
 from flask import current_app
@@ -12,6 +14,8 @@ from app.organization.models import Organization
 from app.security import valid_email
 from app.urls import absolute_app_url
 from app.utils import utcnow
+
+logger = logging.getLogger(__name__)
 
 NAME_COLUMNS = {"name", "student_name", "recipient_name", "certificate_name"}
 COLLEGE_COLUMNS = {
@@ -134,6 +138,9 @@ def create_certificate_batch(
         db.session.add(certificate)
         db.session.flush()
         certificate.certificate_number = generate_certificate_number(certificate.id)
+        certificate.pdf_expires_at = certificate.created_at + timedelta(
+            days=current_app.config["CERTIFICATE_PDF_RETENTION_DAYS"]
+        )
 
         relative_path = Path(str(organization_id), str(batch.id), f"{token[:24]}.pdf")
         pdf_path = (storage_root / relative_path).resolve()
@@ -188,7 +195,7 @@ def _send_certificate_link(certificate, batch_title, organization_id):
             f"<p>Your certificate for <strong>{escape(batch_title)}</strong> is ready.</p>"
             f"<p>Certificate number: <strong>{escape(certificate.certificate_number)}</strong></p>"
             f'<p><a href="{escape(public_url, quote=True)}">View and download your certificate</a></p>'
-            "<p>Keep this link to access your certificate in the future.</p>"
+            f"<p>Your certificate details remain available for verification. The PDF can be downloaded for {current_app.config['CERTIFICATE_PDF_RETENTION_DAYS']} days after issue.</p>"
         )
         organization = db.session.get(Organization, organization_id)
         sent = send_email(
@@ -205,3 +212,40 @@ def _send_certificate_link(certificate, batch_title, organization_id):
             certificate.id,
         )
         return "failed"
+
+
+def cleanup_expired_certificate_pdfs(limit=500):
+    now = utcnow()
+    root = Path(current_app.config["CERTIFICATE_STORAGE_PATH"]).resolve()
+    expired = db.session.scalars(
+        db.select(CertificateRecord)
+        .where(
+            CertificateRecord.status == "generated",
+            CertificateRecord.pdf_path.is_not(None),
+            CertificateRecord.pdf_expires_at <= now,
+            CertificateRecord.pdf_deleted_at.is_(None),
+        )
+        .order_by(CertificateRecord.pdf_expires_at)
+        .limit(limit)
+    ).all()
+    removed = 0
+    for certificate in expired:
+        path = (root / certificate.pdf_path).resolve()
+        if root not in path.parents:
+            logger.error(
+                "Refusing to delete certificate PDF outside storage root for certificate id=%s.",
+                certificate.id,
+            )
+            continue
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.exception(
+                "Could not delete expired certificate PDF for certificate id=%s.",
+                certificate.id,
+            )
+            continue
+        certificate.pdf_deleted_at = now
+        removed += 1
+    db.session.commit()
+    return removed

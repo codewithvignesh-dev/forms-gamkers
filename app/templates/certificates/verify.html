@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Verify a certificate · GAMKERS PORTAL{% endblock %}
+{% block content %}
+<section class="certificate-verify-wrap">
+  <div class="panel certificate-verify-card">
+    <p class="eyebrow">PUBLIC RECORDS</p>
+    <h1>Verify a certificate</h1>
+    <p class="muted">Enter the certificate number to confirm its issue record. Verification remains available after the PDF is removed.</p>
+    <form method="get" action="{{ url_for('certificates.verify_certificate') }}">
+      <label class="field-label" for="certificate-number">Certificate number</label>
+      <div class="certificate-verify-search">
+        <input id="certificate-number" name="number" maxlength="48" required value="{{ certificate_number }}" placeholder="CERT-2026-000001">
+        <button class="button button-primary" type="submit">Verify</button>
+      </div>
+    </form>
+    {% if certificate %}
+      <div class="certificate-verification-result is-valid" role="status">
+        <p class="eyebrow">AUTHENTIC CERTIFICATE</p>
+        <h2>{{ batch.title }}</h2>
+        <dl>
+          <div><dt>Recipient</dt><dd>{{ certificate.recipient_name }}</dd></div>
+          <div><dt>Institution</dt><dd>{{ certificate.college_name }}</dd></div>
+          <div><dt>Certificate number</dt><dd>{{ certificate.certificate_number }}</dd></div>
+          <div><dt>Issued</dt><dd>{{ certificate.created_at.strftime('%d %B %Y') }}</dd></div>
+        </dl>
+      </div>
+    {% elif searched %}
+      <div class="certificate-verification-result is-invalid" role="status">
+        <h2>No matching certificate</h2>
+        <p>Check the certificate number and try again. No certificate record was found.</p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

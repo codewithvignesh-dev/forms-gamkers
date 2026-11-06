@@ -5,6 +5,7 @@
   <div class="public-form-brand"><img src="{{ url_for('static', filename='img/logo.png') }}" alt="Gamkers" class="brand-logo-img-sm mr-1"> {{ form.organization.name }}</div>
   <form class="public-form panel" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if form.banner_image_path %}<img class="public-form-banner" src="{{ url_for('forms.public_form_banner', public_id=form.public_id) }}" alt="">{% endif %}
     <div class="public-form-accent"></div>
     <p class="eyebrow">A FORM FROM {{ form.organization.name|upper }}</p><h1>{{ form.title }}</h1>
     {% if form.description %}<p class="public-description">{{ form.description }}</p>{% endif %}
@@ -27,6 +28,6 @@
     <button class="button button-primary button-full" type="submit">Submit response <span>↗</span></button>
     <p class="public-privacy">Your response is shared with {{ form.organization.name }}.</p>
   </form>
-  <p class="powered-by">Forms by <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Gamkers" class="brand-logo-img-sm mx-1 inline-block align-middle"> GAMKERS</p>
+  <p class="powered-by"><img src="{{ url_for('static', filename='img/logo.png') }}" alt="GAMKERS PORTAL" class="brand-logo-img-sm mx-1 inline-block align-middle"> GAMKERS PORTAL</p>
 </section>
 {% endblock %}

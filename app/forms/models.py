@@ -10,6 +10,7 @@ class Form(db.Model):
     creator_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     title = db.Column(db.String(180), nullable=False)
     description = db.Column(db.Text, nullable=False, default="")
+    banner_image_path = db.Column(db.String(80))
     public_id = db.Column(db.String(32), nullable=False, unique=True, index=True)
     questions = db.Column(db.JSON, nullable=False, default=list)
     confirmation_subject = db.Column(
@@ -27,6 +28,7 @@ class Form(db.Model):
         db.String(64), nullable=False, default="Asia/Kolkata", server_default="Asia/Kolkata"
     )
     event_location = db.Column(db.String(255))
+    event_url = db.Column(db.String(2048))
     is_published = db.Column(db.Boolean, nullable=False, default=False)
     closed_at = db.Column(db.DateTime)
     closed_message = db.Column(db.Text)

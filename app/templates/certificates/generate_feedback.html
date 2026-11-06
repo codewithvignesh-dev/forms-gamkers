@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Generate event certificates · Forms Gamkers{% endblock %}
+{% block title %}Generate event certificates · GAMKERS PORTAL{% endblock %}
 {% block content %}
 <section class="workspace-wrap">
   <a class="back-link" href="{{ url_for('forms.edit_form', form_id=event_form.id) }}">← Closed event form</a>
@@ -15,7 +15,7 @@
     <p class="eyebrow">CERTIFICATE DETAILS</p>
     <label class="field-label" for="title">Certificate title</label><input id="title" name="title" maxlength="180" required value="{{ request.form.get('title', default_title) }}">
     <label class="field-label" for="description">Certificate description</label><textarea id="description" name="description" rows="4" maxlength="5000" required>{{ request.form.get('description', 'This certificate is awarded to {name} from {college_name} for participating in ' ~ event_form.title ~ '. Certificate number: {certificate_number}.') }}</textarea>
-    <p class="security-note">Personalise text with {name}, {college_name}, {certificate_number}, and {date}. Certificate PDFs stay in private storage; public links do not expire.</p>
+    <p class="security-note">Personalise text with {name}, {college_name}, {certificate_number}, and {date}. PDF files stay in private storage and are deleted after 30 days; certificate verification records remain available permanently.</p>
     <button class="button button-primary" type="submit" {% if not eligible_count %}disabled{% endif %}>Generate {{ eligible_count }} certificates <span>↗</span></button>
   </form>
 </section>

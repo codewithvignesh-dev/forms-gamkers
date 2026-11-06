@@ -2,6 +2,8 @@ import json
 import uuid
 from datetime import datetime, timedelta
 from html import escape
+from pathlib import Path
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import (
@@ -12,6 +14,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     stream_with_context,
     url_for,
 )
@@ -20,9 +23,11 @@ from sqlalchemy import func
 
 from app.extensions import db, limiter
 from app.forms.csv_export import export_filename, iter_csv_rows
+from app.forms.banner_storage import remove_banner, save_banner
 from app.forms.models import Form, Submission
 from app.forms.validation import QUESTION_TYPES, validate_answers, validate_questions
 from app.mail import send_email
+from app.permissions import requires_permission
 from app.urls import absolute_app_url
 from app.utils import utcnow
 
@@ -87,6 +92,7 @@ def parse_event_time(value, field_name):
 
 @forms.route("/forms/new", methods=["GET", "POST"])
 @login_required
+@requires_permission("forms.manage")
 def create_form():
     if request.method == "POST":
         return save_form(None)
@@ -95,6 +101,7 @@ def create_form():
 
 @forms.route("/forms/<int:form_id>/edit", methods=["GET", "POST"])
 @login_required
+@requires_permission("forms.manage")
 def edit_form(form_id):
     form = owned_form(form_id)
     if form.closed_at:
@@ -130,6 +137,7 @@ def save_form(form):
     confirmation_format = request.form.get("confirmation_format", "text")
     event_timezone = request.form.get("event_timezone", "Asia/Kolkata").strip()
     event_location = request.form.get("event_location", "").strip()
+    event_url = request.form.get("event_url", "").strip()
     if not title or len(title) > 180 or len(description) > 5000:
         flash("Enter a title and a description under 5,000 characters.", "error")
         return render_editor(form)
@@ -142,9 +150,30 @@ def save_form(form):
     if confirmation_format not in {"text", "html", "markdown"}:
         flash("Choose a supported confirmation email format.", "error")
         return render_editor(form)
-    if len(event_timezone) > 64 or len(event_location) > 255:
-        flash("Enter a valid event timezone and a location under 255 characters.", "error")
+    if len(event_timezone) > 64 or len(event_location) > 255 or len(event_url) > 2048:
+        flash(
+            "Keep the event timezone under 64, location under 255, and URL under 2,048 characters.",
+            "error",
+        )
         return render_editor(form)
+    if event_url:
+        try:
+            parsed_event_url = urlsplit(event_url)
+            valid_event_url = (
+                parsed_event_url.scheme.lower() == "https"
+                and bool(parsed_event_url.hostname)
+                and not any(character.isspace() for character in event_url)
+                and "\\" not in event_url
+                and not parsed_event_url.username
+                and not parsed_event_url.password
+                and parsed_event_url.port != 0
+                and not any(ord(character) < 32 for character in event_url)
+            )
+        except ValueError:
+            valid_event_url = False
+        if not valid_event_url:
+            flash("Enter a valid HTTPS event URL.", "error")
+            return render_editor(form)
     try:
         ZoneInfo(event_timezone)
         event_start_at = parse_event_time(
@@ -185,6 +214,15 @@ def save_form(form):
     ):
         flash("Add a required email question before publishing so respondents can receive confirmations.", "error")
         return render_editor(form)
+    banner_upload = request.files.get("banner_image")
+    new_banner_path = None
+    if banner_upload and banner_upload.filename:
+        try:
+            new_banner_path = save_banner(banner_upload)
+        except ValueError as error:
+            flash(str(error), "error")
+            return render_editor(form)
+    previous_banner_path = form.banner_image_path if form else None
     if form is None:
         form = Form(
             organization_id=current_user.organization_id,
@@ -193,6 +231,8 @@ def save_form(form):
         )
     form.title = title
     form.description = description
+    if new_banner_path:
+        form.banner_image_path = new_banner_path
     form.questions = questions
     form.confirmation_subject = subject
     form.confirmation_body = body
@@ -201,15 +241,24 @@ def save_form(form):
     form.event_end_at = event_end_at
     form.event_timezone = event_timezone
     form.event_location = event_location or None
+    form.event_url = event_url or None
     form.is_published = should_publish
     db.session.add(form)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        remove_banner(new_banner_path)
+        raise
+    if new_banner_path and previous_banner_path:
+        remove_banner(previous_banner_path)
     flash("Form published." if form.is_published else "Draft saved.", "success")
     return redirect(url_for("forms.edit_form", form_id=form.id))
 
 
 @forms.post("/forms/<int:form_id>/close")
 @login_required
+@requires_permission("forms.manage")
 def close_form(form_id):
     form = owned_form(form_id)
     if not form.is_published or form.closed_at:
@@ -287,20 +336,26 @@ def close_form(form_id):
 
 @forms.post("/forms/<int:form_id>/delete")
 @login_required
+@requires_permission("forms.manage")
 def delete_form(form_id):
     form = owned_form(form_id)
+    banner_paths = [form.banner_image_path]
     if not form.parent_form_id:
         feedback_form = Form.query.filter_by(parent_form_id=form.id).first()
         if feedback_form:
+            banner_paths.append(feedback_form.banner_image_path)
             db.session.delete(feedback_form)
     db.session.delete(form)
     db.session.commit()
+    for banner_path in banner_paths:
+        remove_banner(banner_path)
     flash("Form and its responses deleted.", "success")
     return redirect(url_for("main.dashboard"))
 
 
 @forms.get("/forms/<int:form_id>/responses")
 @login_required
+@requires_permission("responses.view")
 def responses(form_id):
     form = owned_form(form_id)
     submissions = Submission.query.filter_by(form_id=form.id).order_by(Submission.submitted_at.desc()).all()
@@ -310,6 +365,7 @@ def responses(form_id):
 @forms.get("/forms/<int:form_id>/export.csv")
 @forms.get("/forms/<int:form_id>/export-csv")
 @login_required
+@requires_permission("responses.export")
 def export_csv(form_id):
     form = owned_form(form_id)
     questions = form.questions or []
@@ -374,6 +430,7 @@ def export_csv(form_id):
 
 @forms.get("/forms/<int:form_id>/responses/<int:submission_id>")
 @login_required
+@requires_permission("responses.view")
 def response_detail(form_id, submission_id):
     form = owned_form(form_id)
     submission = Submission.query.filter_by(id=submission_id, form_id=form.id).first_or_404()
@@ -390,13 +447,9 @@ def public_form(public_id):
     if not form or (not form.is_published and not form.closed_at):
         return render_template("errors/404.html"), 404
     if form.closed_at:
-        feedback_form = db.session.scalar(
-            db.select(Form).where(Form.parent_form_id == form.id)
-        )
         return render_template(
             "forms/closed.html",
             form=form,
-            feedback_form=feedback_form,
         )
     if request.method == "GET":
         return render_template("forms/public_form.html", form=form)
@@ -432,6 +485,7 @@ def public_form(public_id):
             "event_date": event_date,
             "event_time": event_time,
             "event_location": form.event_location or "",
+            "event_url": form.event_url or "",
         }.items():
             subject = subject.replace("{" + placeholder + "}", value)
             body = body.replace("{" + placeholder + "}", value)
@@ -444,8 +498,11 @@ def public_form(public_id):
             event_details = None
             calendar_event = None
             event_url = None
-            if form.event_start_at or form.event_location:
-                event_url = absolute_app_url("forms.public_form", public_id=form.public_id)
+            if form.event_start_at or form.event_location or form.event_url:
+                public_form_url = absolute_app_url(
+                    "forms.public_form", public_id=form.public_id
+                )
+                event_url = form.event_url or public_form_url
                 event_details = {
                     "location": form.event_location,
                     "timezone": form.event_timezone,
@@ -478,6 +535,7 @@ def public_form(public_id):
                     *email_args,
                     content_format=form.confirmation_format,
                     event_details=event_details,
+                    event_title=form.title,
                     event_url=event_url,
                     calendar_event=calendar_event,
                 )
@@ -492,3 +550,15 @@ def public_form(public_id):
     submission.email_status = email_status
     db.session.commit()
     return render_template("forms/submitted.html", email_status=email_status)
+
+
+@forms.get("/f/<public_id>/banner")
+def public_form_banner(public_id):
+    form = db.session.scalar(db.select(Form).where(Form.public_id == public_id))
+    if not form or (not form.is_published and not form.closed_at) or not form.banner_image_path:
+        return render_template("errors/404.html"), 404
+    root = Path(current_app.config["FORM_BANNER_STORAGE_PATH"]).resolve()
+    image_path = (root / form.banner_image_path).resolve()
+    if root not in image_path.parents or not image_path.is_file():
+        return render_template("errors/404.html"), 404
+    return send_file(image_path, max_age=3600, conditional=True)

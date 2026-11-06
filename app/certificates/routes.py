@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 from flask import (
     Blueprint,
+    abort,
     current_app,
     flash,
     redirect,
@@ -18,10 +19,14 @@ from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
 from app.certificates.models import CertificateBatch, CertificateRecord, CertificateUpload
-from app.certificates.services import create_certificate_batch, read_recipients
+from app.certificates.services import (
+    create_certificate_batch,
+    read_recipients,
+)
 from app.extensions import db, limiter
 from app.forms.csv_export import iter_csv_rows, sanitize_csv_value
 from app.forms.models import Form, Submission
+from app.permissions import requires_permission
 from app.security import valid_email
 from app.urls import absolute_app_url
 from app.utils import utcnow
@@ -35,8 +40,14 @@ def _storage_root():
     return root
 
 
+def _uploads_root():
+    root = Path(current_app.config["CERTIFICATE_UPLOAD_PATH"]).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
 def _remove_upload(upload):
-    root = (_storage_root() / "uploads").resolve()
+    root = _uploads_root()
     path = (root / upload.stored_filename).resolve()
     if root in path.parents and path.is_file():
         path.unlink()
@@ -49,8 +60,25 @@ def _owned_batch(batch_id):
     ).first_or_404()
 
 
+def _public_pdf_path(certificate):
+    if (
+        certificate.pdf_deleted_at
+        or certificate.pdf_expires_at
+        and certificate.pdf_expires_at <= utcnow()
+    ):
+        abort(410)
+    if not certificate.pdf_path:
+        return None
+    root = _storage_root()
+    pdf_path = (root / certificate.pdf_path).resolve()
+    if root not in pdf_path.parents or not pdf_path.is_file():
+        return None
+    return pdf_path
+
+
 @certificates.get("/")
 @login_required
+@requires_permission("certificates.manage")
 def index():
     batches = (
         CertificateBatch.query.filter_by(organization_id=current_user.organization_id)
@@ -63,6 +91,7 @@ def index():
 
 @certificates.route("/forms/<int:form_id>/generate", methods=["GET", "POST"])
 @login_required
+@requires_permission("certificates.manage")
 @limiter.limit("5 per hour", methods=["POST"])
 def generate_from_feedback(form_id):
     event_form = Form.query.filter_by(
@@ -141,6 +170,7 @@ def generate_from_feedback(form_id):
 
 @certificates.post("/upload")
 @login_required
+@requires_permission("certificates.manage")
 @limiter.limit("5 per hour")
 def upload_recipients():
     uploaded_file = request.files.get("recipient_file")
@@ -156,8 +186,7 @@ def upload_recipients():
     except ValueError as error:
         flash(str(error), "error")
         return redirect(url_for("certificates.index"))
-    uploads = (_storage_root() / "uploads").resolve()
-    uploads.mkdir(parents=True, exist_ok=True)
+    uploads = _uploads_root()
     staged_name = secrets.token_hex(24) + Path(original_filename).suffix.lower()
     staged_path = (uploads / staged_name).resolve()
     if uploads not in staged_path.parents:
@@ -192,6 +221,7 @@ def upload_recipients():
 
 @certificates.get("/uploads/<int:upload_id>")
 @login_required
+@requires_permission("certificates.manage")
 def preview_upload(upload_id):
     staged = CertificateUpload.query.filter_by(
         id=upload_id, organization_id=current_user.organization_id
@@ -206,6 +236,7 @@ def preview_upload(upload_id):
 
 @certificates.post("/uploads/<int:upload_id>/generate")
 @login_required
+@requires_permission("certificates.manage")
 @limiter.limit("5 per hour")
 def generate_from_upload(upload_id):
     staged = CertificateUpload.query.filter_by(
@@ -221,7 +252,7 @@ def generate_from_upload(upload_id):
     if not title or len(title) > 180 or not description or len(description) > 5000:
         flash("Enter a certificate title and a description under 5,000 characters.", "error")
         return redirect(url_for("certificates.preview_upload", upload_id=staged.id))
-    upload_path = (_storage_root() / "uploads" / staged.stored_filename).resolve()
+    upload_path = (_uploads_root() / staged.stored_filename).resolve()
     if not upload_path.is_file():
         _remove_upload(staged)
         db.session.commit()
@@ -254,6 +285,7 @@ def generate_from_upload(upload_id):
 
 @certificates.get("/batches/<int:batch_id>")
 @login_required
+@requires_permission("certificates.manage")
 def batch_detail(batch_id):
     batch = _owned_batch(batch_id)
     records = CertificateRecord.query.filter_by(batch_id=batch.id).order_by(
@@ -326,12 +358,14 @@ def _export_batch(batch_id, export_format):
 
 @certificates.get("/batches/<int:batch_id>/export.csv")
 @login_required
+@requires_permission("certificates.manage")
 def export_batch_csv(batch_id):
     return _export_batch(batch_id, "csv")
 
 
 @certificates.get("/batches/<int:batch_id>/export.xlsx")
 @login_required
+@requires_permission("certificates.manage")
 def export_batch_xlsx(batch_id):
     return _export_batch(batch_id, "xlsx")
 
@@ -346,6 +380,35 @@ def public_certificate(token):
         "certificates/public.html",
         certificate=certificate,
         batch=batch,
+        pdf_available=(
+            not certificate.pdf_deleted_at
+            and (
+                certificate.pdf_expires_at is None
+                or certificate.pdf_expires_at > utcnow()
+            )
+        ),
+    )
+
+
+@certificates.get("/verify")
+@limiter.limit("30 per minute")
+def verify_certificate():
+    certificate_number = request.args.get("number", "").strip()
+    certificate = None
+    batch = None
+    if certificate_number and len(certificate_number) <= 48:
+        certificate = CertificateRecord.query.filter_by(
+            certificate_number=certificate_number,
+            status="generated",
+        ).first()
+        if certificate:
+            batch = db.session.get(CertificateBatch, certificate.batch_id)
+    return render_template(
+        "certificates/verify.html",
+        certificate_number=certificate_number,
+        certificate=certificate,
+        batch=batch,
+        searched=bool(certificate_number),
     )
 
 
@@ -354,9 +417,8 @@ def public_certificate_pdf(token):
     certificate = CertificateRecord.query.filter_by(
         public_token=token, status="generated"
     ).first_or_404()
-    root = _storage_root()
-    pdf_path = (root / certificate.pdf_path).resolve()
-    if root not in pdf_path.parents or not pdf_path.is_file():
+    pdf_path = _public_pdf_path(certificate)
+    if pdf_path is None:
         return render_template("errors/404.html"), 404
     response = send_file(
         pdf_path,
@@ -379,9 +441,8 @@ def download_public_certificate(token):
     certificate = CertificateRecord.query.filter_by(
         public_token=token, status="generated"
     ).first_or_404()
-    root = _storage_root()
-    pdf_path = (root / certificate.pdf_path).resolve()
-    if root not in pdf_path.parents or not pdf_path.is_file():
+    pdf_path = _public_pdf_path(certificate)
+    if pdf_path is None:
         return render_template("errors/404.html"), 404
     return send_file(
         pdf_path,

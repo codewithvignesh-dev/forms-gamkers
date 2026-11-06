@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Email delivery · Forms Gamkers{% endblock %}
+{% block title %}Email delivery · GAMKERS PORTAL{% endblock %}
 {% block content %}
 <section class="workspace-wrap settings-wrap">
   <p class="eyebrow">WORKSPACE SETTINGS</p><h1>Email delivery</h1><p class="muted">Confirmation and invitation emails are sent using your organisation's SMTP account.</p>
-  <div class="settings-nav"><a href="{{ url_for('organization.settings') }}">Organisation</a><a class="active" href="{{ url_for('organization.email_settings') }}">Email delivery</a><a href="{{ url_for('organization.team') }}">Team</a></div>
+  <div class="settings-nav"><a href="{{ url_for('organization.settings') }}">Workspace</a><a class="active" href="{{ url_for('organization.email_settings') }}">Email delivery</a>{% if current_user.is_org_admin %}<a href="{{ url_for('organization.team') }}">Team & roles</a>{% endif %}</div>
   <form class="panel settings-panel" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <p class="eyebrow">SMTP CONNECTION</p>

@@ -1,32 +1,54 @@
 {% extends "base.html" %}
-{% block title %}Workspace · Forms Gamkers{% endblock %}
+{% block title %}Workspace · GAMKERS PORTAL{% endblock %}
 {% block content %}
 <section class="workspace-wrap">
   <div class="workspace-heading">
-    <div><p class="eyebrow">YOUR WORKSPACE / {{ current_user.organization.name|upper }}</p><h1>Good to have you back, <span class="accent-text">{{ current_user.name.split(' ')[0] }}.</span></h1><p class="muted">Create forms, gather responses, and keep your team moving.</p></div>
-    <a class="button button-primary" href="{{ url_for('forms.create_form') }}">＋ Create a form</a>
+    <div>
+      <p class="eyebrow">GAMKERS PORTAL <span aria-hidden="true">/</span> WORKSPACE</p>
+      <h1>Welcome back, <span class="accent-text">{{ current_user.name.split(' ')[0] }}</span></h1>
+      <p class="muted">Manage your forms and keep track of the responses that need your attention.</p>
+    </div>
+    {% if can_manage_forms %}<a class="button button-primary" href="{{ url_for('forms.create_form') }}"><span aria-hidden="true">＋</span> Create a form</a>{% endif %}
   </div>
-  <div class="stat-grid">
-    <div class="stat-card"><span>YOUR FORMS</span><strong>{{ forms|length }}</strong><small>Across this organisation</small></div>
-    <div class="stat-card"><span>RESPONSES</span><strong>{{ total_responses }}</strong><small>Collected across all forms</small></div>
-    <div class="stat-card"><span>TEAM MEMBERS</span><strong>{{ member_count }}</strong><small>In your organisation</small></div>
+  <div class="stat-grid {{ 'stat-grid-compact' if not can_view_responses or not current_user.is_org_admin }}">
+    <div class="stat-card"><span>ALL FORMS</span><strong>{{ forms|length }}</strong><small>Forms in your workspace</small></div>
+    {% if can_view_responses %}<div class="stat-card"><span>TOTAL RESPONSES</span><strong>{{ total_responses }}</strong><small>Across all forms</small></div>{% endif %}
+    {% if current_user.is_org_admin %}<div class="stat-card"><span>TEAM MEMBERS</span><strong>{{ member_count }}</strong><small>People with workspace access</small></div>{% endif %}
   </div>
-  <div class="section-title-row"><div><p class="eyebrow">YOUR WORK</p><h2>Forms</h2></div></div>
+  <div class="section-title-row">
+    <div><p class="eyebrow">YOUR WORKSPACE</p><h2>Your forms</h2></div>
+    <span class="form-count">{{ forms|length }} {{ 'form' if forms|length == 1 else 'forms' }}</span>
+  </div>
   {% if forms %}
     <div class="form-list">
       {% for form in forms %}
         <article class="form-list-item">
-          <div class="form-list-icon">✳</div>
-          <div class="form-list-main"><h3><a href="{{ url_for('forms.edit_form', form_id=form.id) }}">{{ form.title }}</a></h3><p>{{ form.description or 'No description yet.' }}</p><span class="form-list-meta">{{ response_counts.get(form.id, 0) }} responses · Updated {{ form.updated_at.strftime('%b %d, %Y') }}</span></div>
-          <span class="badge {{ 'badge-live' if form.is_published and not form.closed_at else 'badge-draft' }}">{{ 'Closed' if form.closed_at else ('Published' if form.is_published else 'Draft') }}</span>
-          {% if form.is_published %}<a class="button button-outline button-small" href="{{ url_for('forms.public_form', public_id=form.public_id) }}" target="_blank" rel="noopener">Open ↗</a>{% endif %}
-          <a class="button button-quiet button-small" href="{{ url_for('forms.responses', form_id=form.id) }}">Responses</a>
-          {% if form.parent_form_id %}<span class="form-list-meta">Feedback form</span>{% endif %}
+          <div class="form-list-icon" aria-hidden="true">{{ form.title[:1]|upper }}</div>
+          <div class="form-list-main">
+            <h3>{% if can_manage_forms %}<a href="{{ url_for('forms.edit_form', form_id=form.id) }}">{{ form.title }}</a>{% else %}{{ form.title }}{% endif %}</h3>
+            <p>{{ form.description or 'No description yet.' }}</p>
+            <div class="form-list-details">
+              <span class="badge {{ 'badge-live' if form.is_published and not form.closed_at else 'badge-draft' }}">{{ 'Closed' if form.closed_at else ('Published' if form.is_published else 'Draft') }}</span>
+              {% if can_view_responses %}<span>{{ response_counts.get(form.id, 0) }} {{ 'response' if response_counts.get(form.id, 0) == 1 else 'responses' }}</span>{% endif %}
+              <span>Updated {{ form.updated_at.strftime('%b %d, %Y') }}</span>
+              {% if form.parent_form_id %}<span>Feedback form</span>{% endif %}
+            </div>
+          </div>
+          <div class="form-list-actions">
+            {% if can_view_responses %}<a class="button button-outline button-small" href="{{ url_for('forms.responses', form_id=form.id) }}">View responses</a>{% endif %}
+            {% if form.is_published and not form.closed_at %}<a class="button button-quiet button-small" href="{{ url_for('forms.public_form', public_id=form.public_id) }}" target="_blank" rel="noopener">Open form <span aria-hidden="true">↗</span></a>{% endif %}
+            {% if can_manage_forms %}<a class="button button-quiet button-small" href="{{ url_for('forms.edit_form', form_id=form.id) }}">Edit</a>{% endif %}
+          </div>
         </article>
       {% endfor %}
     </div>
   {% else %}
-    <div class="empty-state"><div class="empty-mark">✳</div><h3>Your first form starts here.</h3><p>Create a form, set up your confirmation email, and share it with the world.</p><a class="button button-primary" href="{{ url_for('forms.create_form') }}">Create your first form <span>↗</span></a></div>
+    <div class="empty-state">
+      <div class="empty-mark" aria-hidden="true">＋</div>
+      <h3>No forms yet</h3>
+      <p>{% if can_manage_forms %}Create a form to start collecting information from your team or community.{% else %}Ask your portal admin to grant form-management access.{% endif %}</p>
+      {% if can_manage_forms %}<a class="button button-primary" href="{{ url_for('forms.create_form') }}">Create your first form <span aria-hidden="true">↗</span></a>{% endif %}
+    </div>
   {% endif %}
 </section>
 {% endblock %}

@@ -1,8 +1,11 @@
-import os
+import secrets
+import threading
+import time
 from pathlib import Path
 
+import click
 from dotenv import load_dotenv
-from flask import Flask, render_template
+from flask import Flask, g, render_template
 from sqlalchemy.engine import URL
 
 load_dotenv()
@@ -12,8 +15,7 @@ from app.extensions import csrf, db, limiter, login_manager, migrate
 
 
 def create_app(test_config=None):
-    app = Flask(__name__, instance_relative_config=True)
-    os.makedirs(app.instance_path, exist_ok=True)
+    app = Flask(__name__)
     app.config.from_object(Config)
     if test_config:
         app.config.update(test_config)
@@ -49,10 +51,17 @@ def create_app(test_config=None):
             database=database_settings["DB_NAME"],
             query={"charset": "utf8mb4"},
         )
-    if not app.config.get("CERTIFICATE_STORAGE_PATH"):
-        app.config["CERTIFICATE_STORAGE_PATH"] = str(
-            Path(app.instance_path) / "certificates"
-        )
+    project_root = Path(app.root_path).parent
+    storage_paths = {
+        "CERTIFICATE_STORAGE_PATH": "var/certificates",
+        "CERTIFICATE_UPLOAD_PATH": "var/uploads/certificates",
+        "FORM_BANNER_STORAGE_PATH": "var/uploads/form-banners",
+    }
+    for setting, default in storage_paths.items():
+        path = Path(app.config.get(setting) or default)
+        if not path.is_absolute():
+            path = project_root / path
+        app.config[setting] = str(path.resolve())
     if not app.config.get("EMAIL_CSS_PATH"):
         app.config["EMAIL_CSS_PATH"] = str(
             Path(app.static_folder) / "css" / "app.css"
@@ -83,12 +92,97 @@ def create_app(test_config=None):
     from app.main.routes import main
     from app.organization.routes import organization
     from app.certificates.routes import certificates
+    from app.bulk_mail import bulk_mail
 
     app.register_blueprint(main)
     app.register_blueprint(auth)
     app.register_blueprint(forms)
     app.register_blueprint(organization)
     app.register_blueprint(certificates)
+    app.register_blueprint(bulk_mail)
+
+    @app.before_request
+    def create_csp_nonce():
+        g.csp_nonce = secrets.token_urlsafe(16)
+
+    cleanup_state = {"last_run": 0.0}
+    cleanup_lock = threading.Lock()
+
+    @app.before_request
+    def cleanup_expired_certificate_pdfs():
+        now = time.monotonic()
+        if now - cleanup_state["last_run"] < app.config[
+            "CERTIFICATE_PDF_CLEANUP_INTERVAL_SECONDS"
+        ]:
+            return
+        if not cleanup_lock.acquire(blocking=False):
+            return
+        try:
+            if now - cleanup_state["last_run"] < app.config[
+                "CERTIFICATE_PDF_CLEANUP_INTERVAL_SECONDS"
+            ]:
+                return
+            cleanup_state["last_run"] = now
+            from app.certificates.services import cleanup_expired_certificate_pdfs
+
+            cleanup_expired_certificate_pdfs()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("Scheduled certificate PDF cleanup failed.")
+        finally:
+            cleanup_lock.release()
+
+    @app.cli.command("cleanup-expired-certificate-pdfs")
+    def cleanup_certificate_pdfs_command():
+        """Delete expired certificate PDFs while retaining their verification records."""
+        from app.certificates.services import cleanup_expired_certificate_pdfs
+
+        removed = 0
+        while True:
+            batch_removed = cleanup_expired_certificate_pdfs()
+            removed += batch_removed
+            if batch_removed < 500:
+                break
+        click.echo(f"Deleted {removed} expired certificate PDF(s).")
+
+    @app.cli.command("create-admin")
+    @click.option("--name", prompt="Admin name")
+    @click.option("--email", prompt="Admin email")
+    @click.password_option(prompt="Admin password", confirmation_prompt=True)
+    def create_admin(name, email, password):
+        """Create the one administrator account for this portal."""
+        from app.auth.models import User
+        from app.organization.models import Organization
+        from app.security import valid_email
+
+        email = email.strip().lower()
+        if not name.strip() or len(name.strip()) > 120:
+            raise click.ClickException("Enter a name of at most 120 characters.")
+        if not valid_email(email):
+            raise click.ClickException("Enter a valid email address.")
+        if not 12 <= len(password) <= 1024:
+            raise click.ClickException("Use a password with 12–1,024 characters.")
+        if db.session.scalar(db.select(User.id).where(User.admin_slot == 1)):
+            raise click.ClickException("The portal already has its single admin account.")
+        if db.session.scalar(db.select(User.id).where(User.email == email)):
+            raise click.ClickException("An account already exists for that email address.")
+
+        organization = Organization.query.order_by(Organization.id).first()
+        if organization is None:
+            organization = Organization(name=app.config["PORTAL_NAME"])
+        else:
+            organization.name = app.config["PORTAL_NAME"]
+        user = User(
+            name=name.strip(),
+            email=email,
+            role="admin",
+            admin_slot=1,
+            organization=organization,
+        )
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        click.echo(f"Admin account created for {email}.")
 
     @app.after_request
     def set_security_headers(response):
@@ -97,7 +191,8 @@ def create_app(test_config=None):
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; style-src 'self'; script-src 'self'; "
+            "default-src 'self'; "
+            f"style-src 'self' 'nonce-{g.csp_nonce}'; script-src 'self'; "
             "img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; "
             "base-uri 'self'; object-src 'none'",
         )
@@ -107,10 +202,17 @@ def create_app(test_config=None):
     def inject_template_globals():
         from datetime import datetime, timezone
 
-        return {"current_year": datetime.now(timezone.utc).year}
+        return {
+            "current_year": datetime.now(timezone.utc).year,
+            "csp_nonce": getattr(g, "csp_nonce", ""),
+        }
 
     @app.errorhandler(413)
     def request_too_large(_error):
         return render_template("errors/413.html"), 413
+
+    @app.errorhandler(410)
+    def certificate_pdf_expired(_error):
+        return render_template("errors/410.html"), 410
 
     return app

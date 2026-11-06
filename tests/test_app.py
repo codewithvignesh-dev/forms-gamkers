@@ -1,24 +1,21 @@
+import io
 import json
 import socket
 from datetime import timedelta
 from types import SimpleNamespace
 
 from app.extensions import db
-from app.models import Form, Organization, PasswordReset, User, utcnow
+from app.models import Form, Organization, PasswordReset, RolePermission, User, utcnow
 from app.security import hash_token
 
 
 def register(client, email="admin@example.com"):
-    return client.post(
-        "/signup",
-        data={
-            "name": "Alex Admin",
-            "organization": "Northstar Labs",
-            "email": email,
-            "password": "a-very-long-password",
-        },
-        follow_redirects=True,
+    result = client.application.test_cli_runner().invoke(
+        args=["create-admin", "--name", "Alex Admin", "--email", email],
+        input="a-very-long-password\na-very-long-password\n",
     )
+    assert result.exit_code == 0, result.output
+    return login(client, email)
 
 
 def login(client, email="admin@example.com"):
@@ -29,14 +26,23 @@ def login(client, email="admin@example.com"):
     )
 
 
-def test_signup_creates_an_admin_workspace_and_dashboard(client, app):
+def test_public_signup_is_disabled_and_cli_creates_the_single_admin(client, app):
+    assert client.get("/signup").status_code == 404
+    assert client.post("/signup").status_code == 404
     response = register(client)
     assert response.status_code == 200
-    assert b"NORTHSTAR LABS" in response.data
+    assert b"GAMKERS PORTAL" in response.data
     with app.app_context():
         user = db.session.scalar(db.select(User).where(User.email == "admin@example.com"))
-        assert user.role == "org_admin"
-        assert user.organization.name == "Northstar Labs"
+        assert user.role == "admin"
+        assert user.admin_slot == 1
+        assert user.organization.name == "GAMKERS PORTAL"
+    result = client.application.test_cli_runner().invoke(
+        args=["create-admin", "--name", "Another Admin", "--email", "other@example.com"],
+        input="another-safe-password\nanother-safe-password\n",
+    )
+    assert result.exit_code != 0
+    assert "single admin account" in result.output
 
 
 def test_form_can_be_published_and_sends_a_confirmation(app, client, monkeypatch):
@@ -100,7 +106,7 @@ def test_tenant_form_access_is_scoped_to_the_current_organisation(app, client):
     register(client)
     with app.app_context():
         other_org = Organization(name="Other company")
-        other_admin = User(name="Other", email="other@example.com", role="org_admin", organization=other_org)
+        other_admin = User(name="Other", email="other@example.com", role="developer", organization=other_org)
         other_admin.set_password("another-long-password")
         other_form = Form(
             organization=other_org,
@@ -122,7 +128,7 @@ def test_member_cannot_change_organisation_settings(app, client):
             organization_id=1,
             name="Sam Member",
             email="member@example.com",
-            role="member",
+            role="contributor",
         )
         member.set_password("a-very-long-password")
         db.session.add(member)
@@ -135,15 +141,15 @@ def test_member_cannot_change_organisation_settings(app, client):
         follow_redirects=True,
     )
     assert response.status_code == 200
-    assert b"Only organisation admins" in response.data
+    assert b"do not have permission" in response.data
     with app.app_context():
-        assert db.session.get(Organization, 1).name == "Northstar Labs"
+        assert db.session.get(Organization, 1).name == "GAMKERS PORTAL"
 
 
 def test_password_reset_token_is_single_use(app, client):
     with app.app_context():
         organization = Organization(name="Northstar Labs")
-        user = User(name="Alex", email="alex@example.com", role="org_admin", organization=organization)
+        user = User(name="Alex", email="alex@example.com", role="admin", organization=organization)
         user.set_password("old-password-that-is-long")
         db.session.add(user)
         db.session.flush()
@@ -171,7 +177,7 @@ def test_password_reset_token_is_single_use(app, client):
 def test_password_reset_link_uses_configured_origin_not_host_header(app, client, monkeypatch):
     with app.app_context():
         organization = Organization(name="Northstar Labs")
-        user = User(name="Alex", email="alex@example.com", role="org_admin", organization=organization)
+        user = User(name="Alex", email="alex@example.com", role="admin", organization=organization)
         user.set_password("old-password-that-is-long")
         db.session.add(user)
         db.session.commit()
@@ -212,3 +218,91 @@ def test_smtp_delivery_rejects_private_network_targets(app, monkeypatch):
             assert "public IP addresses" in str(error)
         else:
             raise AssertionError("Private SMTP targets must be rejected.")
+
+
+def test_bulk_mail_import_sends_individual_personalised_messages(client, monkeypatch):
+    register(client)
+    sent = []
+    monkeypatch.setattr(
+        "app.bulk_mail.send_email",
+        lambda *args: sent.append(args) or True,
+    )
+    response = client.post(
+        "/mail/bulk",
+        data={
+            "subject": "Hello {name}",
+            "body": "Hello {name} ({email})",
+            "recipient_file": (
+                io.BytesIO(
+                    b"email,name\nalex@example.com,Alex\n"
+                    b"alex@example.com,Duplicate\ninvalid,Nope\nsam@example.com,Sam\n"
+                ),
+                "team.csv",
+            ),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"2 sent, 0 failed, 1 invalid and 1 duplicate rows skipped" in response.data
+    assert [(message[0], message[1], message[2]) for message in sent] == [
+        ("alex@example.com", "Hello Alex", "Hello Alex (alex@example.com)"),
+        ("sam@example.com", "Hello Sam", "Hello Sam (sam@example.com)"),
+    ]
+
+
+def test_admin_can_change_role_permissions_without_granting_admin_privilege(
+    client, app
+):
+    register(client)
+    with app.app_context():
+        admin = db.session.scalar(db.select(User).where(User.email == "admin@example.com"))
+        user = User(
+            name="Sam",
+            email="sam@example.com",
+            role="contributor",
+            organization_id=admin.organization_id,
+        )
+        user.set_password("a-very-long-password")
+        db.session.add(user)
+        db.session.commit()
+        user_id = user.id
+
+    response = client.post(
+        "/team/permissions",
+        data={
+            "developer:bulk_mail.send": "on",
+            "admin:team.manage": "off",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    with app.app_context():
+        admin = db.session.scalar(db.select(User).where(User.email == "admin@example.com"))
+        assert admin.has_permission("team.manage")
+        permission = RolePermission.query.filter_by(
+            organization_id=admin.organization_id,
+            role="developer",
+            permission="bulk_mail.send",
+        ).one()
+        assert permission.enabled
+        developer = User(
+            name="Dev",
+            email="dev@example.com",
+            role="developer",
+            organization_id=admin.organization_id,
+        )
+        developer.set_password("a-very-long-password")
+        db.session.add(developer)
+        db.session.flush()
+        assert developer.has_permission("bulk_mail.send")
+        assert not db.session.get(User, user_id).has_permission("bulk_mail.send")
+
+    response = client.post(
+        f"/team/{user_id}/role",
+        data={"role": "admin"},
+        follow_redirects=True,
+    )
+    assert b"Choose the developer or contributor role" in response.data
+    with app.app_context():
+        assert db.session.get(User, user_id).role == "contributor"

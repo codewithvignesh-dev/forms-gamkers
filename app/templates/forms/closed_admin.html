@@ -14,8 +14,8 @@
       <p class="muted">Your feedback form is published. Share the link below with attendees.</p>
       <div class="public-link-row"><input readonly value="{{ feedback_url }}" aria-label="Feedback form URL"><button class="button button-outline button-small" type="button" data-copy-link>Copy link</button></div>
       <div class="closed-admin-actions">
-        <a class="button button-outline" href="{{ url_for('forms.responses', form_id=feedback_form.id) }}">Feedback responses</a>
-        <a class="button button-primary" href="{{ url_for('certificates.generate_from_feedback', form_id=form.id) }}">Generate certificates ↗</a>
+        {% if current_user.has_permission('responses.view') %}<a class="button button-outline" href="{{ url_for('forms.responses', form_id=feedback_form.id) }}">Feedback responses</a>{% endif %}
+        {% if current_user.has_permission('certificates.manage') %}<a class="button button-primary" href="{{ url_for('certificates.generate_from_feedback', form_id=form.id) }}">Generate certificates ↗</a>{% endif %}
       </div>
     {% endif %}
     <p class="muted">Public form: <a class="text-accent" target="_blank" rel="noopener" href="{{ url_for('forms.public_form', public_id=form.public_id) }}">Open closed form ↗</a></p>

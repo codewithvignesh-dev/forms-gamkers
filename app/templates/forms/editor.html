@@ -1,17 +1,21 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit ' ~ form.title if form else 'New form' }} · Forms Gamkers{% endblock %}
+{% block title %}{{ 'Edit ' ~ form.title if form else 'New form' }} · GAMKERS PORTAL{% endblock %}
 {% block head %}<script src="{{ url_for('static', filename='js/form-builder.js') }}" defer></script>{% endblock %}
 {% block content %}
 <section class="editor-wrap">
   <div class="editor-heading"><div><a class="back-link" href="{{ url_for('main.dashboard') }}">← Workspace</a><p class="eyebrow">FORM BUILDER</p><h1>{{ 'Edit your form' if form else 'Create a form' }}</h1></div>
     {% if form and form.is_published %}<a class="button button-outline button-small" href="{{ url_for('forms.public_form', public_id=form.public_id) }}" target="_blank" rel="noopener">Open live form ↗</a>{% endif %}
   </div>
-  <form class="editor-form" method="post" id="form-editor" data-questions="{{ (initial_questions if initial_questions is defined else (form.questions if form else []))|tojson|forceescape }}">
+  <form class="editor-form" method="post" enctype="multipart/form-data" id="form-editor" data-questions="{{ (initial_questions if initial_questions is defined else (form.questions if form else []))|tojson|forceescape }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="questions" id="questions-data">
     <div class="panel editor-panel">
       <p class="eyebrow">FORM DETAILS</p>
       <label class="field-label" for="title">Form title</label><input id="title" name="title" maxlength="180" required value="{{ request.form.get('title', form.title if form else '') }}">
       <label class="field-label" for="description">Description</label><textarea id="description" name="description" rows="3" maxlength="5000">{{ request.form.get('description', form.description if form else '') }}</textarea>
+      <label class="field-label" for="banner_image">Banner image <span class="muted">(optional)</span></label>
+      <input id="banner_image" name="banner_image" type="file" accept="image/jpeg,image/png,image/webp">
+      <p class="security-note">Upload a JPEG, PNG or WebP image up to 8 MB. Banner images are served only with their public form.</p>
+      {% if form and form.banner_image_path %}<img class="form-banner-preview" src="{{ url_for('forms.public_form_banner', public_id=form.public_id) }}" alt="Current form banner">{% endif %}
     </div>
     <div class="panel editor-panel event-details-panel">
       <p class="eyebrow">EVENT INFORMATION</p><h2>Date, time and location</h2>
@@ -25,6 +29,9 @@
       <p class="security-note">Use an IANA timezone such as Asia/Kolkata, Asia/Singapore, Europe/London or America/New_York.</p>
       <label class="field-label" for="event_location">Location or meeting link</label>
       <input id="event_location" name="event_location" maxlength="255" value="{{ request.form.get('event_location', form.event_location if form else '') }}" placeholder="Venue address or HTTPS meeting link">
+      <label class="field-label" for="event_url">Event URL <span class="muted">(optional)</span></label>
+      <input id="event_url" name="event_url" type="url" maxlength="2048" value="{{ request.form.get('event_url', form.event_url if form else '') }}" placeholder="https://example.com/event">
+      <p class="security-note">A link to the event page. It appears in confirmation emails and calendar invitations.</p>
     </div>
     <div class="editor-section-heading"><div><p class="eyebrow">BUILD YOUR QUESTIONS</p><h2>Questions</h2></div><button class="button button-outline button-small" type="button" id="add-question">＋ Add question</button></div>
     <div id="question-list" class="question-list" aria-live="polite"></div>

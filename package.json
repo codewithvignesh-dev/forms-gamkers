@@ -1,5 +1,5 @@
 {
-  "name": "forms-gamkers",
+  "name": "gamkers-portal",
   "private": true,
   "scripts": {
     "build:css": "npx @tailwindcss/cli -i ./tailwind/app.css -o ./app/static/css/app.css --minify",

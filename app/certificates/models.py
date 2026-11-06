@@ -42,6 +42,8 @@ class CertificateRecord(db.Model):
     certificate_number = db.Column(db.String(48), nullable=False, unique=True)
     public_token = db.Column(db.String(64), nullable=False, unique=True)
     pdf_path = db.Column(db.String(512))
+    pdf_expires_at = db.Column(db.DateTime, index=True)
+    pdf_deleted_at = db.Column(db.DateTime)
     status = db.Column(db.String(16), nullable=False, default="pending")
     notification_status = db.Column(
         db.String(16), nullable=False, default="pending", server_default="skipped"

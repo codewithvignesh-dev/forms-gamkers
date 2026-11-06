@@ -6,8 +6,15 @@ from sqlalchemy import func
 
 from app.extensions import db, limiter
 from app.mail import send_email
-from app.auth.models import Invitation, User
+from app.auth.models import Invitation, RolePermission, User
 from app.organization.models import Organization
+from app.permissions import (
+    DEFAULT_ROLE_PERMISSIONS,
+    PROTECTED_PERMISSIONS,
+    ROLE_LABELS,
+    ROLE_PERMISSIONS,
+    requires_permission,
+)
 from app.security import encrypt_smtp_password, hash_token, new_token, valid_email
 from app.urls import absolute_app_url
 from app.utils import utcnow
@@ -24,10 +31,8 @@ def require_admin():
 
 @organization.route("/settings/organisation", methods=["GET", "POST"])
 @login_required
+@requires_permission("settings.manage")
 def settings():
-    denied = require_admin()
-    if denied:
-        return denied
     org = db.session.get(Organization, current_user.organization_id)
     if request.method == "POST":
         name = request.form.get("name", "").strip()
@@ -45,10 +50,8 @@ def settings():
 
 @organization.route("/settings/email", methods=["GET", "POST"])
 @login_required
+@requires_permission("settings.manage")
 def email_settings():
-    denied = require_admin()
-    if denied:
-        return denied
     org = db.session.get(Organization, current_user.organization_id)
     if request.method == "POST":
         host = request.form.get("host", "").strip()
@@ -92,7 +95,10 @@ def team():
         return denied
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
-        if not valid_email(email):
+        role = request.form.get("role", "contributor")
+        if role not in {"developer", "contributor"}:
+            flash("Choose the developer or contributor role.", "error")
+        elif not valid_email(email):
             flash("Enter a valid email address.", "error")
         elif db.session.scalar(db.select(User.id).where(func.lower(User.email) == email)):
             flash("That email already has an account.", "error")
@@ -110,6 +116,7 @@ def team():
             invite = Invitation(
                 organization_id=current_user.organization_id,
                 email=email,
+                role=role,
                 token_hash=hash_token(token),
                 expires_at=utcnow() + timedelta(days=7),
             )
@@ -119,8 +126,8 @@ def team():
                 link = absolute_app_url("auth.accept_invitation", token=token)
                 sent = send_email(
                     email,
-                    f"Join {current_user.organization.name} on Forms Gamkers",
-                    f"You have been invited to join {current_user.organization.name} as a member.\n\nAccept within 7 days:\n{link}",
+                    f"Join {current_user.organization.name} on GAMKERS PORTAL",
+                    f"You have been invited to join {current_user.organization.name} as a {ROLE_LABELS[role]}.\n\nAccept within 7 days:\n{link}",
                     current_user.organization,
                 )
             except Exception:
@@ -137,7 +144,21 @@ def team():
     invitations = Invitation.query.filter_by(
         organization_id=current_user.organization_id, accepted_at=None
     ).filter(Invitation.expires_at > utcnow()).all()
-    return render_template("organization/team.html", members=members, invitations=invitations)
+    return render_template(
+        "organization/team.html",
+        members=members,
+        invitations=invitations,
+        roles=ROLE_LABELS,
+        permission_rows=ROLE_PERMISSIONS,
+        permission_defaults=DEFAULT_ROLE_PERMISSIONS,
+        permission_overrides={
+            (item.role, item.permission): item.enabled
+            for item in RolePermission.query.filter_by(
+                organization_id=current_user.organization_id
+            ).all()
+        },
+        protected_permissions=PROTECTED_PERMISSIONS,
+    )
 
 
 @organization.post("/team/<int:user_id>/role")
@@ -152,14 +173,44 @@ def update_role(user_id):
     role = request.form.get("role")
     if user.id == current_user.id:
         flash("You cannot change your own role.", "error")
-    elif role not in {"org_admin", "member"}:
-        flash("Choose a valid role.", "error")
-    elif user.role == "org_admin" and role == "member" and User.query.filter_by(
-        organization_id=current_user.organization_id, role="org_admin"
-    ).count() <= 1:
-        flash("Your organisation must have at least one admin.", "error")
+    elif role not in {"developer", "contributor"}:
+        flash("Choose the developer or contributor role. The single admin cannot be reassigned.", "error")
     else:
         user.role = role
+        user.admin_slot = None
         db.session.commit()
         flash("Member role updated.", "success")
+    return redirect(url_for("organization.team"))
+
+
+@organization.post("/team/permissions")
+@login_required
+def update_permissions():
+    denied = require_admin()
+    if denied:
+        return denied
+    role_permissions = {
+        (item.role, item.permission): item
+        for item in RolePermission.query.filter_by(
+            organization_id=current_user.organization_id
+        ).all()
+    }
+    for role in ("admin", "developer", "contributor"):
+        for permission, _label in ROLE_PERMISSIONS:
+            enabled = request.form.get(f"{role}:{permission}") == "on"
+            if permission in PROTECTED_PERMISSIONS:
+                enabled = role == "admin"
+            existing = role_permissions.get((role, permission))
+            if existing is None:
+                existing = RolePermission(
+                    organization_id=current_user.organization_id,
+                    role=role,
+                    permission=permission,
+                    enabled=enabled,
+                )
+                db.session.add(existing)
+            else:
+                existing.enabled = enabled
+    db.session.commit()
+    flash("Role permissions updated.", "success")
     return redirect(url_for("organization.team"))

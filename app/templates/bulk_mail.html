@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Bulk mail · GAMKERS PORTAL{% endblock %}
+{% block content %}
+<section class="workspace-wrap settings-wrap bulk-mail-wrap">
+  <p class="eyebrow">TEAM COMMUNICATION</p>
+  <h1>Bulk mail</h1>
+  <p class="muted">Import a recipient list and send personal, one-to-one messages from the GAMKERS workspace.</p>
+  <div class="bulk-mail-grid">
+    <form class="panel bulk-mail-panel" method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-label" for="recipient_file">Recipient CSV</label>
+      <input id="recipient_file" name="recipient_file" type="file" accept=".csv,text/csv" required>
+      <p class="field-hint">Use a UTF-8 CSV with an <code>email</code> column and an optional <code>name</code> column. Up to {{ config['BULK_MAIL_MAX_RECIPIENTS'] }} unique recipients.</p>
+      <label class="field-label" for="subject">Subject</label>
+      <input id="subject" name="subject" maxlength="200" placeholder="A quick update from GAMKERS" value="{{ request.form.get('subject', '') }}" required>
+      <label class="field-label" for="body">Message</label>
+      <textarea id="body" name="body" maxlength="10000" rows="9" placeholder="Hello {name},&#10;&#10;Your update..." required>{{ request.form.get('body', '') }}</textarea>
+      <p class="field-hint">Personalise each message with <code>{name}</code> and <code>{email}</code>. Messages are sent separately, not as a shared group email.</p>
+      <button class="button button-primary button-full" type="submit">Import and send mail <span>↗</span></button>
+    </form>
+    <aside class="panel bulk-mail-aside">
+      <span class="feature-icon">CSV</span>
+      <h2>Prepare your list</h2>
+      <p>Save a spreadsheet as a UTF-8 CSV. Keep one recipient per row.</p>
+      <pre>email,name
+alex@example.com,Alex
+sam@example.com,Sam</pre>
+      <ul>
+        <li>Invalid email addresses are skipped.</li>
+        <li>Duplicate addresses are sent only once.</li>
+        <li>Delivery results report sent and failed counts.</li>
+      </ul>
+    </aside>
+  </div>
+</section>
+{% endblock %}

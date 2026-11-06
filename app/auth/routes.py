@@ -7,42 +7,11 @@ from sqlalchemy import func
 from app.extensions import db, limiter
 from app.mail import send_email
 from app.auth.models import Invitation, PasswordReset, User
-from app.organization.models import Organization
 from app.security import hash_token, new_token, valid_email
 from app.urls import absolute_app_url
 from app.utils import utcnow
 
 auth = Blueprint("auth", __name__)
-
-
-@auth.route("/signup", methods=["GET", "POST"])
-@limiter.limit("5 per hour")
-def signup():
-    if current_user.is_authenticated:
-        return redirect(url_for("main.dashboard"))
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        organization_name = request.form.get("organization", "").strip()
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "")
-        if not name or len(name) > 120 or not organization_name or len(organization_name) > 160:
-            flash("Enter a valid name and organisation name.", "error")
-        elif not valid_email(email):
-            flash("Enter a valid email address.", "error")
-        elif not 12 <= len(password) <= 1024:
-            flash("Use a password with 12–1,024 characters.", "error")
-        elif db.session.scalar(db.select(User.id).where(func.lower(User.email) == email)):
-            flash("An account already exists for that email address.", "error")
-        else:
-            organization = Organization(name=organization_name)
-            user = User(name=name, email=email, role="org_admin", organization=organization)
-            user.set_password(password)
-            db.session.add(user)
-            db.session.commit()
-            login_user(user)
-            flash("Your organisation workspace is ready.", "success")
-            return redirect(url_for("main.dashboard"))
-    return render_template("auth/signup.html")
 
 
 @auth.route("/login", methods=["GET", "POST"])
@@ -91,7 +60,7 @@ def forgot_password():
             db.session.commit()
             try:
                 link = absolute_app_url("auth.reset_password", token=token)
-                if not send_email(user.email, "Reset your Forms Gamkers password", f"Reset your password within 30 minutes:\n\n{link}", user.organization):
+                if not send_email(user.email, "Reset your GAMKERS PORTAL password", f"Reset your password within 30 minutes:\n\n{link}", user.organization):
                     current_app.logger.warning("Password reset email not sent: no SMTP configuration.")
             except Exception:
                 current_app.logger.exception("Password reset email delivery failed.")
@@ -144,7 +113,7 @@ def accept_invitation(token):
                 organization_id=invitation.organization_id,
                 email=invitation.email,
                 name=name,
-                role="member",
+                role=invitation.role,
             )
             user.set_password(password)
             invitation.accepted_at = utcnow()

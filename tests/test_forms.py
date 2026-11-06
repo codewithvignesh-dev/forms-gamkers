@@ -7,6 +7,7 @@ import csv
 import io
 import json
 import os
+import re
 import sys
 import unittest
 from unittest.mock import patch
@@ -79,25 +80,47 @@ class FormsGamkersTestCase(unittest.TestCase):
         self.assertIn(b"GAMKERS", res.data)
         self.assertIn(b"FORMS", res.data)
         self.assertIn(b"logo.png", res.data)
+        nonce = re.search(rb'<style nonce="([^"]+)"', res.data).group(1).decode()
+        self.assertIn(f"'nonce-{nonce}'", res.headers["Content-Security-Policy"])
+        for asset in (
+            "img/gamkers-first-form-guide.gif",
+            "img/learning-plan-form.svg",
+            "img/learning-question-types.svg",
+            "img/learning-publish-review.svg",
+        ):
+            self.assertEqual(self.client.get(f"/static/{asset}").status_code, 200)
         self.assertEqual(res.headers.get("X-Content-Type-Options"), "nosniff")
         self.assertEqual(res.headers.get("X-Frame-Options"), "DENY")
         self.assertIn("Content-Security-Policy", res.headers)
 
     def test_02_signup_and_workspace_creation(self):
-        """User registers an organisation and becomes org_admin."""
-        payload = {
-            "name": "Akash M",
-            "organization": "Gamkers Security Team",
-            "email": "akash@gamkers.in",
-            "password": "MasterCyberPassword2026!",
-        }
-        res = self.client.post("/signup", data=payload, follow_redirects=True)
-        self.assertEqual(res.status_code, 200)
-
+        """Public signup stays disabled; the CLI provisions the single admin."""
+        self.assertEqual(self.client.get("/signup").status_code, 404)
+        admin = User.query.filter_by(email="akash@gamkers.in").first()
+        if admin is None:
+            result = self.app.test_cli_runner().invoke(
+                args=[
+                    "create-admin",
+                    "--name",
+                    "Akash M",
+                    "--email",
+                    "akash@gamkers.in",
+                ],
+                input="MasterCyberPassword2026!\nMasterCyberPassword2026!\n",
+            )
+            self.assertEqual(result.exit_code, 0, result.output)
         admin = User.query.filter_by(email="akash@gamkers.in").first()
         self.assertIsNotNone(admin)
         self.assertTrue(admin.is_org_admin)
-        self.assertEqual(admin.organization.name, "Gamkers Security Team")
+        self.assertEqual(admin.organization.name, "GAMKERS PORTAL")
+        self.client.post(
+            "/login",
+            data={
+                "email": "akash@gamkers.in",
+                "password": "MasterCyberPassword2026!",
+            },
+            follow_redirects=True,
+        )
 
     def test_03_login_logout_flow(self):
         """Login and logout authentication flow."""
@@ -133,11 +156,11 @@ class FormsGamkersTestCase(unittest.TestCase):
         self.assertEqual(decrypt_smtp_password(org.smtp_password_encrypted), "UltraSecretSMTPKey999!")
 
     def test_05_team_invitations_and_roles(self):
-        """Admin invites a team member, and member role access is enforced."""
+        """Admin invites a developer, and non-admin access is enforced."""
         self.test_02_signup_and_workspace_creation()
 
         with patch("app.organization.routes.send_email", return_value=True):
-            res = self.client.post("/team", data={"email": "teammate@gamkers.in"}, follow_redirects=True)
+            res = self.client.post("/team", data={"email": "teammate@gamkers.in", "role": "developer"}, follow_redirects=True)
             self.assertEqual(res.status_code, 200)
 
         invite = Invitation.query.filter_by(email="teammate@gamkers.in").first()
@@ -157,10 +180,10 @@ class FormsGamkersTestCase(unittest.TestCase):
 
         member = User.query.filter_by(email="teammate@gamkers.in").first()
         self.assertIsNotNone(member)
-        self.assertEqual(member.role, "member")
+        self.assertEqual(member.role, "developer")
         self.assertFalse(member.is_org_admin)
 
-        # Member cannot access /settings/organisation or /settings/email
+        # Team permissions are required for portal settings.
         member_client = self.app.test_client()
         member_client.post("/login", data={"email": "teammate@gamkers.in", "password": "TeammatePassword2026!"}, follow_redirects=True)
         res = member_client.get("/settings/email")

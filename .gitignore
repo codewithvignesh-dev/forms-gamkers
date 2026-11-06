@@ -9,6 +9,7 @@ myenv/
 
 # Flask and local data
 instance/
+var/
 *.db
 *.sqlite
 *.sqlite3

@@ -1,7 +1,7 @@
 import csv
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlparse
@@ -12,17 +12,24 @@ from app.certificates.services import read_recipients
 from app.extensions import db
 from app.mail import _calendar_invite, _calendar_url, _styled_email, send_email
 from app.models import CertificateBatch, CertificateRecord, Form, Submission
+from app.utils import utcnow
 
 
 def _register(client):
+    result = client.application.test_cli_runner().invoke(
+        args=[
+            "create-admin",
+            "--name",
+            "Event Admin",
+            "--email",
+            "event-admin@example.com",
+        ],
+        input="safe-test-password-2026\nsafe-test-password-2026\n",
+    )
+    assert result.exit_code == 0, result.output
     return client.post(
-        "/signup",
-        data={
-            "name": "Event Admin",
-            "organization": "Northstar Events",
-            "email": "event-admin@example.com",
-            "password": "safe-test-password-2026",
-        },
+        "/login",
+        data={"email": "event-admin@example.com", "password": "safe-test-password-2026"},
         follow_redirects=True,
     )
 
@@ -97,6 +104,37 @@ def test_mysql_connection_settings_escape_password_special_characters():
     assert database_url.query["charset"] == "utf8mb4"
 
 
+def test_wsgi_entrypoints_start_the_flask_application(monkeypatch):
+    import runpy
+
+    import app as app_package
+    from flask import Flask
+
+    original_create_app = app_package.create_app
+    created_apps = []
+    started_apps = []
+
+    def create_test_app():
+        app = original_create_app(
+            {
+                "TESTING": True,
+                "SECRET_KEY": "wsgi-smoke-test",
+                "SQLALCHEMY_DATABASE_URI": "sqlite://",
+            }
+        )
+        created_apps.append(app)
+        return app
+
+    monkeypatch.setattr(app_package, "create_app", create_test_app)
+    monkeypatch.setattr(Flask, "run", lambda application: started_apps.append(application))
+
+    runpy.run_path("wsgi.py", run_name="__main__")
+    runpy.run_path("passenger_wsgi.py", run_name="__main__")
+
+    assert len(created_apps) == 2
+    assert started_apps == created_apps
+
+
 def test_published_forms_save_changes_without_republishing_or_unpublishing(client):
     _register(client)
     event_form = _published_event(client)
@@ -137,6 +175,59 @@ def test_published_forms_save_changes_without_republishing_or_unpublishing(clien
     assert event_form.title == "Security Summit Updated"
 
 
+def test_form_banner_upload_is_validated_private_and_served_with_public_form(
+    app, client, tmp_path
+):
+    from PIL import Image
+
+    _register(client)
+    event_form = _published_event(client)
+    app.config["FORM_BANNER_STORAGE_PATH"] = str(tmp_path / "private-banners")
+    image = io.BytesIO()
+    Image.new("RGB", (640, 240), "#234567").save(image, format="PNG")
+
+    response = client.post(
+        f"/forms/{event_form.id}/edit",
+        data={
+            "title": event_form.title,
+            "description": "Banner test",
+            "questions": json.dumps(event_form.questions),
+            "confirmation_subject": "Thanks",
+            "confirmation_body": "Thanks {name}",
+            "confirmation_format": "text",
+            "banner_image": (io.BytesIO(image.getvalue()), "event.png"),
+        },
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 302
+    db.session.refresh(event_form)
+    banner_path = Path(app.config["FORM_BANNER_STORAGE_PATH"]) / event_form.banner_image_path
+    assert banner_path.is_file()
+    public_page = client.get(f"/f/{event_form.public_id}")
+    assert b"public_form_banner" not in public_page.data
+    assert f"/f/{event_form.public_id}/banner".encode() in public_page.data
+    banner = client.get(f"/f/{event_form.public_id}/banner")
+    assert banner.status_code == 200
+    assert banner.mimetype == "image/png"
+    assert banner.data.startswith(b"\x89PNG")
+
+    response = client.post(
+        f"/forms/{event_form.id}/edit",
+        data={
+            "title": event_form.title,
+            "questions": json.dumps(event_form.questions),
+            "confirmation_subject": "Thanks",
+            "confirmation_body": "Thanks {name}",
+            "confirmation_format": "text",
+            "banner_image": (io.BytesIO(b"not an image"), "fake.png"),
+        },
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 400
+    assert b"valid image" in response.data
+    assert banner_path.is_file()
+
+
 def test_closing_registration_creates_feedback_form_and_generates_permanent_certificates(
     app, client, tmp_path, monkeypatch
 ):
@@ -167,7 +258,8 @@ def test_closing_registration_creates_feedback_form_and_generates_permanent_cert
 
     closed_page = client.get(f"/f/{event_form.public_id}")
     assert b"Registration is closed. Thank you." in closed_page.data
-    assert feedback_form.public_id.encode() in closed_page.data
+    assert b"Share feedback" not in closed_page.data
+    assert feedback_form.public_id.encode() not in closed_page.data
     closed_post = client.post(
         f"/f/{event_form.public_id}",
         data={"name": "late attendee", "email": "late@example.com"},
@@ -226,7 +318,7 @@ def test_closing_registration_creates_feedback_form_and_generates_permanent_cert
     pdf_path = Path(app.config["CERTIFICATE_STORAGE_PATH"]) / certificate.pdf_path
     assert pdf_path.is_file()
     assert pdf_path.read_bytes().startswith(b"%PDF")
-    assert b"/Subtype /Image" in pdf_path.read_bytes()
+    assert b"/Subtype /Image" not in pdf_path.read_bytes()
 
     public_page = client.get(f"/certificates/public/{certificate.public_token}")
     assert b"Alex Attendee" in public_page.data
@@ -245,6 +337,33 @@ def test_closing_registration_creates_feedback_form_and_generates_permanent_cert
     )
     assert downloaded_pdf.status_code == 200
     assert downloaded_pdf.data == public_pdf.data == pdf_path.read_bytes()
+    public_pdf.close()
+    downloaded_pdf.close()
+
+    verified = client.get(
+        f"/certificates/verify?number={certificate.certificate_number}"
+    )
+    assert b"AUTHENTIC CERTIFICATE" in verified.data
+    assert b"Alex Attendee" in verified.data
+
+    certificate.pdf_expires_at = utcnow() - timedelta(seconds=1)
+    db.session.commit()
+    cleanup = client.application.test_cli_runner().invoke(
+        args=["cleanup-expired-certificate-pdfs"]
+    )
+    assert cleanup.exit_code == 0, cleanup.output
+    assert "Deleted 1 expired certificate PDF" in cleanup.output
+    assert not pdf_path.exists()
+    assert certificate.pdf_deleted_at is not None
+    assert client.get(
+        f"/certificates/verify?number={certificate.certificate_number}"
+    ).status_code == 200
+    assert b"Alex Attendee" in client.get(
+        f"/certificates/verify?number={certificate.certificate_number}"
+    ).data
+    assert client.get(
+        f"/certificates/public/{certificate.public_token}/pdf"
+    ).status_code == 410
 
     second_batch = client.post(
         f"/certificates/forms/{event_form.id}/generate",
@@ -351,12 +470,24 @@ def test_confirmation_html_and_markdown_are_sanitised_and_tailwind_styled(app):
         )
         assert settings["host"] == "mail.example.com"
         assert message.is_multipart()
-        assert message.get_body(preferencelist=("plain",)) is not None
+        assert message.get_body(preferencelist=("plain",)) is None
         html_part = message.get_body(preferencelist=("html",)).get_content()
         assert "<strong>Alex</strong>" in html_part
+        assert "cid:gamkers-portal-logo" in html_part
+        assert "GAMKERS PORTAL" in html_part
+        assert "Thanks" in html_part
         assert "onerror" not in html_part
         assert "style=" in html_part
+        assert "overflow-wrap" in html_part
+        assert "word-wrap" not in html_part
         assert "var(--" not in html_part
+        logo = next(
+            part for part in message.iter_attachments()
+            if part.get_content_type() == "image/png"
+        )
+        assert logo["Content-ID"] == "<gamkers-portal-logo>"
+        assert logo.get_content_disposition() == "inline"
+        assert len(logo.get_content()) <= 100_000
 
         message, _, _ = _styled_email(
             "alex@example.com",
@@ -398,6 +529,7 @@ def test_registration_confirmation_includes_event_details_and_calendar_links(
             "event_end_at": "2027-04-15T17:30",
             "event_timezone": "Asia/Kolkata",
             "event_location": "Bengaluru Tech Park",
+            "event_url": "https://events.example.com/modern-web-summit",
             "publish": "yes",
         },
     )
@@ -420,8 +552,32 @@ def test_registration_confirmation_includes_event_details_and_calendar_links(
     assert "Bengaluru Tech Park" in sent[0][0][2]
     assert event_kwargs["event_details"]["date"] == "Thursday, 15 April 2027"
     assert event_kwargs["event_details"]["location"] == "Bengaluru Tech Park"
+    assert event_kwargs["event_url"] == "https://events.example.com/modern-web-summit"
+    assert (
+        event_kwargs["calendar_event"]["url"]
+        == "https://events.example.com/modern-web-summit"
+    )
     assert event_kwargs["calendar_event"]["timezone"] == "Asia/Kolkata"
-    assert event_kwargs["event_url"].endswith(event_form.public_id)
+
+
+def test_form_rejects_non_https_event_url(client):
+    _register(client)
+    response = client.post(
+        "/forms/new",
+        data={
+            "title": "Unsafe event link",
+            "questions": json.dumps(
+                [{"id": "email", "title": "Email", "type": "email", "required": True}]
+            ),
+            "confirmation_subject": "Thanks",
+            "confirmation_body": "Received",
+            "event_url": "javascript:alert(1)",
+            "publish": "no",
+        },
+    )
+
+    assert response.status_code == 400
+    assert b"valid HTTPS event URL" in response.data
 
 
 def test_calendar_confirmation_has_styled_google_link_and_ics_attachment(app, monkeypatch):
@@ -513,7 +669,15 @@ def test_calendar_confirmation_has_styled_google_link_and_ics_attachment(app, mo
             event_url=calendar_event["url"],
             calendar_event=calendar_event,
         )
-        attachments = list(sent_messages[0].iter_attachments())
-        assert len(attachments) == 1
-        assert attachments[0].get_content_type() == "text/calendar"
-        assert "DTSTART:20270415T033000Z" in attachments[0].get_content()
+        attachments = list(sent_messages[0].walk())
+        calendar_attachment = next(
+            part for part in attachments
+            if part.get_content_type() == "text/calendar"
+        )
+        inline_logo = next(
+            part for part in attachments if part.get_content_type() == "image/png"
+        )
+        assert "DTSTART:20270415T033000Z" in calendar_attachment.get_content()
+        assert inline_logo["Content-ID"] == "<gamkers-portal-logo>"
+        assert sent_messages[0].get_body(preferencelist=("plain",)) is None
+        assert sent_messages[0].get_body(preferencelist=("html",)).get_content_type() == "text/html"

@@ -7,3 +7,5 @@ if PROJECT_DIR not in sys.path:
 
 from wsgi import application
 
+if __name__ == "__main__":
+    application.run()

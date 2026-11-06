@@ -6,11 +6,5 @@
   <p class="eyebrow">REGISTRATION CLOSED</p>
   <h1>{{ form.title }}</h1>
   <p class="closed-message">{{ form.closed_message }}</p>
-  {% if feedback_form %}
-    <p class="muted">Already attended? Share your feedback and enter the name you would like on your certificate.</p>
-    <a class="button button-primary" href="{{ url_for('forms.public_form', public_id=feedback_form.public_id) }}">Share feedback <span>↗</span></a>
-  {% elif form.parent_form_id %}
-    <p class="muted">This feedback form is no longer accepting responses.</p>
-  {% endif %}
 </section>
 {% endblock %}

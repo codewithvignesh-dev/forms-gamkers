@@ -3,18 +3,17 @@ from pathlib import Path
 import secrets
 
 from reportlab.lib.colors import HexColor
-from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 
 
 PAGE_WIDTH = 842
 PAGE_HEIGHT = 536
-INK = HexColor("#173C5B")
-MUTED = HexColor("#5C6E7C")
-GOLD = HexColor("#B18A45")
-PAPER = HexColor("#FFFEFA")
-LINE = HexColor("#DCE3E8")
+INK = HexColor("#182B3A")
+MUTED = HexColor("#526473")
+GOLD = HexColor("#B88A45")
+PAPER = HexColor("#FBFAF7")
+LINE = HexColor("#D9DFE2")
 
 
 def render_description(description, name, college_name, certificate_number, date):
@@ -90,83 +89,94 @@ def generate_pdf(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pdf = canvas.Canvas(str(output_path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
     center_x = PAGE_WIDTH / 2
-    content_width = PAGE_WIDTH - 210
+    content_width = PAGE_WIDTH - 156
     issue_date = issue_date or datetime.now(timezone.utc).strftime("%d %B %Y")
 
     pdf.setFillColor(PAPER)
     pdf.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, fill=1, stroke=0)
-    background = Path(__file__).resolve().parents[1] / "static" / "img" / "certificate-bg.png"
-    pdf.drawImage(
-        ImageReader(str(background)),
-        0,
-        0,
-        width=PAGE_WIDTH,
-        height=PAGE_HEIGHT,
-        mask="auto",
-    )
-
     pdf.setFillColor(INK)
-    pdf.setFont("Helvetica-Bold", 10)
-    pdf.drawCentredString(center_x, 478, "FORMS GAMKERS")
+    pdf.rect(0, PAGE_HEIGHT - 72, PAGE_WIDTH, 72, fill=1, stroke=0)
     pdf.setStrokeColor(GOLD)
-    pdf.setLineWidth(1.2)
-    pdf.line(center_x - 34, 457, center_x + 34, 457)
-    pdf.setFillColor(MUTED)
-    pdf.setFont("Helvetica-Bold", 9)
-    pdf.drawCentredString(center_x, 432, "CERTIFICATE OF ACHIEVEMENT")
+    pdf.setLineWidth(2)
+    pdf.line(0, PAGE_HEIGHT - 73, PAGE_WIDTH, PAGE_HEIGHT - 73)
 
-    title_size = fit_font_size(title, "Helvetica-Bold", 25, content_width, min_size=15)
+    pdf.setFillColor(GOLD)
+    emblem = pdf.beginPath()
+    emblem.moveTo(48, 493)
+    emblem.lineTo(59, 504)
+    emblem.lineTo(70, 493)
+    emblem.lineTo(59, 482)
+    emblem.close()
+    pdf.drawPath(emblem, fill=1, stroke=0)
+    pdf.setFillColor(PAPER)
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(82, 493, "GAMKERS PORTAL")
+    pdf.setFillColor(HexColor("#D7E0E5"))
+    pdf.setFont("Helvetica", 8)
+    pdf.drawRightString(PAGE_WIDTH - 48, 493, "OFFICIAL CERTIFICATE")
+
+    pdf.setStrokeColor(LINE)
+    pdf.setLineWidth(0.7)
+    pdf.rect(32, 30, PAGE_WIDTH - 64, PAGE_HEIGHT - 120, fill=0, stroke=1)
+    pdf.setFillColor(GOLD)
+    pdf.rect(32, 30, 4, PAGE_HEIGHT - 120, fill=1, stroke=0)
+
+    pdf.setFillColor(GOLD)
+    pdf.setFont("Helvetica-Bold", 8)
+    pdf.drawCentredString(center_x, 426, "CERTIFICATE OF ACHIEVEMENT")
+
+    title_size = fit_font_size(title, "Helvetica-Bold", 17, content_width, min_size=10)
     pdf.setFillColor(INK)
     pdf.setFont("Helvetica-Bold", title_size)
-    pdf.drawCentredString(center_x, 395, title)
+    pdf.drawCentredString(center_x, 398, title)
 
     pdf.setFillColor(MUTED)
-    pdf.setFont("Helvetica", 8)
-    pdf.drawCentredString(center_x, 365, "THIS CERTIFICATE IS PROUDLY PRESENTED TO")
+    pdf.setFont("Helvetica", 9)
+    pdf.drawCentredString(center_x, 354, "THIS CERTIFICATE IS PROUDLY PRESENTED TO")
 
-    name_size = fit_font_size(name, "Times-Bold", 39, content_width, min_size=17)
+    name_size = fit_font_size(name, "Times-Bold", 37, content_width, min_size=15)
     pdf.setFillColor(INK)
     pdf.setFont("Times-Bold", name_size)
-    pdf.drawCentredString(center_x, 326, name)
-    name_width = min(stringWidth(name, "Times-Bold", name_size) + 52, content_width)
+    pdf.drawCentredString(center_x, 310, name)
+    name_width = min(stringWidth(name, "Times-Bold", name_size) + 60, content_width)
     pdf.setStrokeColor(GOLD)
-    pdf.setLineWidth(0.9)
+    pdf.setLineWidth(1)
     pdf.line(
         center_x - name_width / 2,
-        315,
+        298,
         center_x + name_width / 2,
-        315,
+        298,
     )
 
     college_size = fit_font_size(
-        college_name, "Helvetica-Bold", 13, content_width, min_size=8
+        college_name, "Helvetica-Bold", 11, content_width, min_size=8
     )
     pdf.setFillColor(INK)
     pdf.setFont("Helvetica-Bold", college_size)
-    pdf.drawCentredString(center_x, 289, college_name)
+    pdf.drawCentredString(center_x, 276, college_name)
 
     rendered_description = render_description(
         description, name, college_name, certificate_number, issue_date
     )
-    description_size = 11
+    description_size = 10
     lines = wrap_text(
         rendered_description, "Helvetica", description_size, content_width
     )
     pdf.setFillColor(MUTED)
     pdf.setFont("Helvetica", description_size)
-    description_y = 252
-    for line in lines[:4]:
+    description_y = 244
+    for line in lines[:3]:
         pdf.drawCentredString(center_x, description_y, line)
-        description_y -= 17
+        description_y -= 15
 
     pdf.setStrokeColor(LINE)
-    pdf.line(100, 112, PAGE_WIDTH - 100, 112)
+    pdf.line(78, 93, PAGE_WIDTH - 78, 93)
     pdf.setFillColor(MUTED)
-    pdf.setFont("Helvetica-Bold", 7)
-    pdf.drawString(105, 91, "CERTIFICATE NUMBER")
-    pdf.drawString(PAGE_WIDTH - 205, 91, "DATE ISSUED")
+    pdf.setFont("Helvetica-Bold", 7.5)
+    pdf.drawString(84, 72, "CERTIFICATE NUMBER")
+    pdf.drawRightString(PAGE_WIDTH - 84, 72, "DATE ISSUED")
     pdf.setFillColor(INK)
-    pdf.setFont("Helvetica-Bold", 10)
-    pdf.drawString(105, 73, certificate_number)
-    pdf.drawString(PAGE_WIDTH - 205, 73, issue_date)
+    pdf.setFont("Helvetica-Bold", 9)
+    pdf.drawString(84, 55, certificate_number)
+    pdf.drawRightString(PAGE_WIDTH - 84, 55, issue_date)
     pdf.save()
