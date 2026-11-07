@@ -452,6 +452,13 @@ def public_form(public_id):
             form=form,
         )
     if request.method == "GET":
+        if request.args.get("submitted") == "1":
+            email_status = request.args.get("email_status")
+            if email_status not in {"sent", "failed", "not_configured", "skipped"}:
+                email_status = None
+            return render_template(
+                "forms/submitted.html", email_status=email_status
+            )
         return render_template("forms/public_form.html", form=form)
     try:
         answers, recipient = validate_answers(form.questions, request.form)
@@ -549,7 +556,15 @@ def public_form(public_id):
             email_status = "failed"
     submission.email_status = email_status
     db.session.commit()
-    return render_template("forms/submitted.html", email_status=email_status)
+    return redirect(
+        url_for(
+            "forms.public_form",
+            public_id=form.public_id,
+            submitted="1",
+            email_status=email_status,
+        ),
+        code=303,
+    )
 
 
 @forms.get("/f/<public_id>/banner")

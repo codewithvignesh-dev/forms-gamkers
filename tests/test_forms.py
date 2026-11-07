@@ -351,13 +351,13 @@ class FormsGamkersTestCase(unittest.TestCase):
                     "email": f"respondent{index}@gamkers.in",
                     "payload": payload,
                     "tags": ["-risky", "safe"],
-                })
+                }, follow_redirects=True)
                 self.assertEqual(res.status_code, 200)
             res = anon.post(f"/f/{form.public_id}", data={
                 "email": "=evil@example.com",
                 "payload": "Plain answer",
                 "tags": ["safe", "-risky"],
-            })
+            }, follow_redirects=True)
             self.assertEqual(res.status_code, 200)
 
         res = self.client.get(f"/forms/{form.id}/export.csv")

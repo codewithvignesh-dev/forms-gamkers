@@ -74,6 +74,7 @@ def test_form_can_be_published_and_sends_a_confirmation(app, client, monkeypatch
     response = client.post(
         f"/f/{public_id}",
         data={"name": "Alex", "email": "alex@example.com"},
+        follow_redirects=True,
     )
     assert response.status_code == 200
     assert b"confirmation email is on its way" in response.data

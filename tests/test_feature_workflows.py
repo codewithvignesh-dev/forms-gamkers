@@ -1,12 +1,14 @@
 import csv
 import io
 import json
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
 import pytest
+from flask import g
 
 from app.certificates.services import create_certificate_batch, read_recipients
 from app.extensions import db
@@ -228,6 +230,39 @@ def test_form_banner_upload_is_validated_private_and_served_with_public_form(
     assert banner_path.is_file()
 
 
+def test_public_form_csrf_and_post_redirect_get_prevent_resubmission(
+    app, client, monkeypatch
+):
+    _register(client)
+    event_form = _published_event(client)
+    app.config["WTF_CSRF_ENABLED"] = True
+    app.config["SESSION_COOKIE_SECURE"] = False
+    anon = app.test_client()
+    form_url = f"/f/{event_form.public_id}"
+
+    g.pop("csrf_token", None)
+    page = anon.get(form_url)
+    token = re.search(rb'name="csrf_token" value="([^"]+)"', page.data).group(1).decode()
+    answers = {"email": "respondent@example.com", "name": "First Response"}
+
+    rejected = anon.post(form_url, data=answers)
+    assert rejected.status_code == 400
+    assert Submission.query.filter_by(form_id=event_form.id).count() == 0
+
+    monkeypatch.setattr("app.forms.routes.send_email", lambda *args: True)
+    response = anon.post(form_url, data={**answers, "csrf_token": token})
+    assert response.status_code == 303, response.data.decode()
+    assert "submitted=1" in response.headers["Location"]
+    assert Submission.query.filter_by(form_id=event_form.id).count() == 1
+
+    submitted_page = anon.get(response.headers["Location"])
+    assert submitted_page.status_code == 200
+    assert b"submitted successfully" in submitted_page.data
+    refreshed_page = anon.get(response.headers["Location"])
+    assert refreshed_page.status_code == 200
+    assert Submission.query.filter_by(form_id=event_form.id).count() == 1
+
+
 def test_closing_registration_creates_feedback_form_and_generates_permanent_certificates(
     app, client, tmp_path, monkeypatch
 ):
@@ -276,6 +311,7 @@ def test_closing_registration_creates_feedback_form_and_generates_permanent_cert
             "rating": "Excellent",
             "feedback": "Great workshop!",
         },
+        follow_redirects=True,
     )
     assert response.status_code == 200
     feedback_submission = Submission.query.filter_by(form_id=feedback_form.id).one()
@@ -496,7 +532,9 @@ def test_recipient_reader_accepts_csv_and_rejects_missing_institution(app):
             raise AssertionError("A recipient file without an institution must be rejected.")
 
 
-def test_confirmation_html_and_markdown_are_sanitised_and_tailwind_styled(app):
+def test_confirmation_html_and_markdown_are_sanitised_and_tailwind_styled(
+    app, caplog
+):
     with app.app_context():
         organisation = type(
             "Organisation",
@@ -531,6 +569,7 @@ def test_confirmation_html_and_markdown_are_sanitised_and_tailwind_styled(app):
         assert "overflow-wrap" in html_part
         assert "word-wrap" not in html_part
         assert "var(--" not in html_part
+        assert "Unknown Property name" not in caplog.text
         logo = next(
             part for part in message.iter_attachments()
             if part.get_content_type() == "image/png"
@@ -605,6 +644,7 @@ def test_registration_confirmation_includes_event_details_and_calendar_links(
     response = client.post(
         f"/f/{event_form.public_id}",
         data={"email": "attendee@example.com"},
+        follow_redirects=True,
     )
     assert response.status_code == 200
     event_kwargs = sent[0][1]

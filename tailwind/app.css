@@ -268,7 +268,7 @@
   .public-form-brand { @apply mb-[14px] ml-[5px] text-xs font-semibold text-muted; }
   .public-form { @apply relative overflow-hidden p-5 md:p-[34px]; }
   .public-form-accent { @apply absolute inset-x-0 top-0 h-1 bg-accent; }
-  .public-form-banner { @apply -mx-5 -mt-5 mb-6 block max-h-[260px] w-[calc(100%+2.5rem)] object-cover md:-mx-[34px] md:-mt-[34px] md:w-[calc(100%+4.25rem)]; }
+  .public-form-banner { @apply -mx-5 -mt-5 mb-6 block max-h-[260px] max-w-none w-[calc(100%+2.5rem)] object-cover md:-mx-[34px] md:-mt-[34px] md:w-[calc(100%+4.25rem)]; }
   .form-banner-preview { @apply mt-4 max-h-56 w-full rounded-lg border border-line object-cover; }
   .editor-panel input[type="file"] { @apply cursor-pointer file:mr-3 file:rounded-md file:border-0 file:bg-[#183a21] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-accent; }
   .public-form h1 { @apply mt-[9px] mb-[11px] text-[29px] md:text-[34px]; }

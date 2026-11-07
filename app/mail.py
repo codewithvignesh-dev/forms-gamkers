@@ -230,6 +230,7 @@ def _styled_email(
         allow_network=False,
         keep_style_tags=False,
         remove_classes=False,
+        disable_validation=True,
     )
     message = EmailMessage()
     message["Subject"] = subject
