@@ -9,6 +9,51 @@
     <div class="public-form-accent"></div>
     <p class="eyebrow">A FORM FROM {{ form.organization.name|upper }}</p><h1>{{ form.title }}</h1>
     {% if form.description %}<p class="public-description">{{ form.description }}</p>{% endif %}
+    {% if form.event_start_at or form.event_location or form.event_url %}
+    <div class="public-event-card">
+      <div class="public-event-header">
+        <span class="public-event-badge">
+          <svg class="public-event-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.75 2a.75.75 0 01.75.75V4h7V2.75a.75.75 0 011.5 0V4h.25A2.75 2.75 0 0118 6.75v8.5A2.75 2.75 0 0115.25 18H4.75A2.75 2.75 0 012 15.25v-8.5A2.75 2.75 0 014.75 4H5V2.75A.75.75 0 015.75 2zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75z" clip-rule="evenodd"/>
+          </svg>
+          EVENT DETAILS
+        </span>
+        {% if form.event_timezone %}
+          <span class="public-event-tz">{{ form.event_timezone }}</span>
+        {% endif %}
+      </div>
+      <div class="public-event-grid">
+        {% if form.event_start_at %}
+        <div class="public-event-item">
+          <span class="public-event-label">Date &amp; Time</span>
+          <span class="public-event-val">
+            {{ form.event_start_at.strftime('%a, %d %b %Y') }} • {{ form.event_start_at.strftime('%I:%M %p') }}{% if form.event_end_at %} – {{ form.event_end_at.strftime('%I:%M %p') }}{% endif %}
+          </span>
+        </div>
+        {% endif %}
+        {% if form.event_location %}
+        <div class="public-event-item">
+          <span class="public-event-label">Location</span>
+          <span class="public-event-val">
+            {% if form.event_location.startswith('http://') or form.event_location.startswith('https://') %}
+              <a href="{{ form.event_location }}" target="_blank" rel="noopener noreferrer" class="public-event-link">{{ form.event_location }} ↗</a>
+            {% else %}
+              {{ form.event_location }}
+            {% endif %}
+          </span>
+        </div>
+        {% endif %}
+        {% if form.event_url %}
+        <div class="public-event-item">
+          <span class="public-event-label">Event Link</span>
+          <span class="public-event-val">
+            <a href="{{ form.event_url }}" target="_blank" rel="noopener noreferrer" class="public-event-link">View Event Page ↗</a>
+          </span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
     {% for question in form.questions %}
       <fieldset class="public-question">
         <legend>{{ question.title }}{% if question.required %} <span class="required-star" aria-label="required">*</span>{% endif %}</legend>

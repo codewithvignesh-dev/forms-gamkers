@@ -6,7 +6,12 @@ from datetime import timedelta
 import pandas as pd
 from flask import current_app
 
-from app.certificates.generator import generate_certificate_number, generate_pdf, generate_public_token
+from app.certificates.generator import (
+    generate_certificate_number,
+    generate_pdf,
+    generate_public_token,
+    render_description,
+)
 from app.certificates.models import CertificateBatch, CertificateRecord
 from app.extensions import db
 from app.mail import send_email
@@ -146,6 +151,18 @@ def create_certificate_batch(
         pdf_path = (storage_root / relative_path).resolve()
         if storage_root not in pdf_path.parents:
             raise RuntimeError("The generated certificate path escaped the private storage directory.")
+        issue_date_str = certificate.created_at.strftime("%d %B %Y")
+        rendered_desc = render_description(
+            description=description,
+            name=item["name"],
+            college_name=item["college_name"],
+            certificate_number=certificate.certificate_number,
+            date=issue_date_str,
+        )
+        certificate.title = title
+        certificate.description = description
+        certificate.rendered_content = rendered_desc
+        certificate.issue_date = issue_date_str
         try:
             pdf_path.parent.mkdir(parents=True, exist_ok=True)
             generate_pdf(
@@ -155,7 +172,7 @@ def create_certificate_batch(
                 college_name=item["college_name"],
                 certificate_number=certificate.certificate_number,
                 output_path=pdf_path,
-                issue_date=certificate.created_at.strftime("%d %B %Y"),
+                issue_date=issue_date_str,
             )
             certificate.pdf_path = relative_path.as_posix()
             certificate.status = "generated"

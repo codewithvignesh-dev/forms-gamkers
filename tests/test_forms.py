@@ -238,6 +238,7 @@ class FormsGamkersTestCase(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIn(b"Gamkers CTF 2026 Registration", res.data)
         self.assertIn(b"Focus Area", res.data)
+        self.assertNotIn(b"public-event-card", res.data)
 
         # Public submit with mock email dispatch
         with patch("app.forms.routes.send_email", return_value=True) as mock_send:

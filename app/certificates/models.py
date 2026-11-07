@@ -48,9 +48,51 @@ class CertificateRecord(db.Model):
     notification_status = db.Column(
         db.String(16), nullable=False, default="pending", server_default="skipped"
     )
+    title = db.Column(db.String(180))
+    description = db.Column(db.Text)
+    rendered_content = db.Column(db.Text)
+    issue_date = db.Column(db.String(64))
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     batch = db.relationship("CertificateBatch", back_populates="certificates")
     submission = db.relationship("Submission")
+
+    @property
+    def effective_title(self):
+        if self.title:
+            return self.title
+        if self.batch:
+            return self.batch.title
+        return ""
+
+    @property
+    def effective_description(self):
+        if self.description:
+            return self.description
+        if self.batch:
+            return self.batch.description
+        return ""
+
+    @property
+    def effective_issue_date(self):
+        if self.issue_date:
+            return self.issue_date
+        if self.created_at:
+            return self.created_at.strftime("%d %B %Y")
+        return ""
+
+    @property
+    def effective_rendered_content(self):
+        if self.rendered_content:
+            return self.rendered_content
+        from app.certificates.generator import render_description
+
+        return render_description(
+            self.effective_description,
+            self.recipient_name,
+            self.college_name,
+            self.certificate_number,
+            self.effective_issue_date,
+        )
 
 
 class CertificateUpload(db.Model):
