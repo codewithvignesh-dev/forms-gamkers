@@ -274,6 +274,16 @@
   .public-form h1 { @apply mt-[9px] mb-[11px] text-[29px] md:text-[34px]; }
   .public-form .eyebrow { @apply mt-[5px]; }
   .public-description { @apply mb-[27px] whitespace-pre-line text-[13px] text-muted; }
+  .public-event-card { @apply mb-6 rounded-xl border border-line-bright bg-raised/80 p-4 shadow-sm md:p-5; }
+  .public-event-header { @apply mb-3 flex items-center justify-between gap-2 border-b border-line pb-2.5; }
+  .public-event-badge { @apply inline-flex items-center gap-1.5 text-xs font-bold tracking-wider text-accent uppercase; }
+  .public-event-icon { @apply h-4 w-4 text-accent; }
+  .public-event-tz { @apply rounded bg-[#102217] px-2 py-0.5 text-[11px] font-medium text-muted; }
+  .public-event-grid { @apply grid gap-3 sm:grid-cols-2; }
+  .public-event-item { @apply flex flex-col gap-0.5 rounded-lg bg-page/60 p-2.5; }
+  .public-event-label { @apply text-[11px] font-semibold uppercase tracking-wider text-muted; }
+  .public-event-val { @apply text-xs font-medium text-ink break-words; }
+  .public-event-link { @apply text-accent hover:underline; }
   .public-question { @apply my-[22px] min-w-0 border-0 p-0; }
   .public-question legend { @apply mb-[9px] w-full p-0 text-[13px] font-semibold; }
   .required-star { @apply text-accent; }
@@ -344,6 +354,13 @@
   .certificate-verification-result.is-valid { @apply border-[#275a36] bg-[#102217]; }
   .certificate-verification-result.is-invalid { @apply border-[#74383b] bg-[#281416]; }
   .certificate-verification-result.is-invalid p { @apply text-sm text-[#fca5a5]; }
+  .certificate-content-box { @apply mt-5 rounded-lg border border-[#275a36] bg-[#0c1a11] p-4 text-left; }
+  .certificate-content-label { @apply mb-2 text-[11px] font-semibold uppercase tracking-wider text-accent; }
+  .certificate-content-text { @apply whitespace-pre-line text-sm leading-relaxed text-[#d7e0e5]; }
+  .certificate-session-preview { @apply mt-6 border-t border-[#275a36] pt-5 text-center; }
+  .certificate-session-heading { @apply text-[11px] font-semibold uppercase tracking-wider text-muted; }
+  .certificate-preview-actions { @apply mt-4 flex flex-col items-center gap-2; }
+  .certificate-session-note { @apply text-xs text-muted; }
   .invite-panel { @apply flex flex-col items-stretch justify-between gap-5 rounded-[14px] border border-line bg-panel p-[22px] md:flex-row md:items-end; }
   .invite-panel h2 { @apply my-1.5 text-xl; }
   .invite-panel p { @apply mb-0 text-[11px]; }

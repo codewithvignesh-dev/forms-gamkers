@@ -8,10 +8,10 @@ from urllib.parse import urlparse
 
 import pytest
 
-from app.certificates.services import read_recipients
+from app.certificates.services import create_certificate_batch, read_recipients
 from app.extensions import db
 from app.mail import _calendar_invite, _calendar_url, _styled_email, send_email
-from app.models import CertificateBatch, CertificateRecord, Form, Submission
+from app.models import CertificateBatch, CertificateRecord, Form, Submission, User
 from app.utils import utcnow
 
 
@@ -340,11 +340,46 @@ def test_closing_registration_creates_feedback_form_and_generates_permanent_cert
     public_pdf.close()
     downloaded_pdf.close()
 
+    assert certificate.title == "Certificate of Participation"
+    assert certificate.description == "Presented to {name} from {college_name}. No. {certificate_number}."
+    assert (
+        certificate.rendered_content
+        == f"Presented to Alex Attendee from Northstar Institute. No. {certificate.certificate_number}."
+    )
+    assert certificate.issue_date is not None
+
     verified = client.get(
         f"/certificates/verify?number={certificate.certificate_number}"
     )
     assert b"AUTHENTIC CERTIFICATE" in verified.data
     assert b"Alex Attendee" in verified.data
+    assert (
+        f"Presented to Alex Attendee from Northstar Institute. No. {certificate.certificate_number}.".encode()
+        in verified.data
+    )
+    assert f"/certificates/verify/preview/{certificate.certificate_number}".encode() in verified.data
+    assert f"/certificates/verify/download/{certificate.certificate_number}".encode() in verified.data
+
+    session_preview = client.get(
+        f"/certificates/verify/preview/{certificate.certificate_number}"
+    )
+    assert session_preview.status_code == 200
+    assert session_preview.data.startswith(b"%PDF")
+    session_download = client.get(
+        f"/certificates/verify/download/{certificate.certificate_number}"
+    )
+    assert session_download.status_code == 200
+    assert session_download.data.startswith(b"%PDF")
+
+    other_client = client.application.test_client()
+    unverified_preview = other_client.get(
+        f"/certificates/verify/preview/{certificate.certificate_number}"
+    )
+    assert unverified_preview.status_code == 403
+    unverified_download = other_client.get(
+        f"/certificates/verify/download/{certificate.certificate_number}"
+    )
+    assert unverified_download.status_code == 403
 
     certificate.pdf_expires_at = utcnow() - timedelta(seconds=1)
     db.session.commit()
@@ -355,15 +390,30 @@ def test_closing_registration_creates_feedback_form_and_generates_permanent_cert
     assert "Deleted 1 expired certificate PDF" in cleanup.output
     assert not pdf_path.exists()
     assert certificate.pdf_deleted_at is not None
-    assert client.get(
+    verified_after = client.get(
         f"/certificates/verify?number={certificate.certificate_number}"
-    ).status_code == 200
-    assert b"Alex Attendee" in client.get(
-        f"/certificates/verify?number={certificate.certificate_number}"
-    ).data
+    )
+    assert verified_after.status_code == 200
+    assert b"Alex Attendee" in verified_after.data
+    assert (
+        f"Presented to Alex Attendee from Northstar Institute. No. {certificate.certificate_number}.".encode()
+        in verified_after.data
+    )
     assert client.get(
         f"/certificates/public/{certificate.public_token}/pdf"
     ).status_code == 410
+
+    # Even after disk PDF is removed, verified session dynamically generates preview and download
+    preview_after = client.get(
+        f"/certificates/verify/preview/{certificate.certificate_number}"
+    )
+    assert preview_after.status_code == 200
+    assert preview_after.data.startswith(b"%PDF")
+    download_after = client.get(
+        f"/certificates/verify/download/{certificate.certificate_number}"
+    )
+    assert download_after.status_code == 200
+    assert download_after.data.startswith(b"%PDF")
 
     second_batch = client.post(
         f"/certificates/forms/{event_form.id}/generate",
@@ -535,6 +585,16 @@ def test_registration_confirmation_includes_event_details_and_calendar_links(
     )
     assert response.status_code == 302
     event_form = Form.query.filter_by(title="Modern Web Summit").one()
+
+    public_view = client.get(f"/f/{event_form.public_id}")
+    assert public_view.status_code == 200
+    assert b"public-event-card" in public_view.data
+    assert b"EVENT DETAILS" in public_view.data
+    assert b"Bengaluru Tech Park" in public_view.data
+    assert b"https://events.example.com/modern-web-summit" in public_view.data
+    assert b"15 Apr 2027" in public_view.data
+    assert b"09:00 AM" in public_view.data
+
     sent = []
 
     def fake_send(*args, **kwargs):
@@ -681,3 +741,108 @@ def test_calendar_confirmation_has_styled_google_link_and_ics_attachment(app, mo
         assert inline_logo["Content-ID"] == "<gamkers-portal-logo>"
         assert sent_messages[0].get_body(preferencelist=("plain",)) is None
         assert sent_messages[0].get_body(preferencelist=("html",)).get_content_type() == "text/html"
+
+
+def test_certificate_full_content_saved_and_session_download(app, client, tmp_path, monkeypatch):
+    app.config["CERTIFICATE_STORAGE_PATH"] = str(tmp_path / "private-certs")
+    monkeypatch.setattr("app.certificates.services.send_email", lambda *a, **k: True)
+    _register(client)
+    user = User.query.first()
+    batch = create_certificate_batch(
+        organization_id=user.organization_id,
+        creator_id=user.id,
+        title="Cyber Security Masterclass",
+        description="Awarded to {name} of {college_name} for outstanding performance on {date}.",
+        records=[
+            {
+                "name": "Bob Cyber",
+                "college_name": "MIT Cyber Lab",
+                "email": "bob@example.com",
+            }
+        ],
+    )
+    cert = batch.certificates[0]
+    assert cert.title == "Cyber Security Masterclass"
+    assert cert.description == "Awarded to {name} of {college_name} for outstanding performance on {date}."
+    assert "Bob Cyber" in cert.rendered_content
+    assert "MIT Cyber Lab" in cert.rendered_content
+    assert cert.issue_date is not None
+
+    anon = client.application.test_client()
+    assert anon.get(f"/certificates/verify/preview/{cert.certificate_number}").status_code == 403
+    assert anon.get(f"/certificates/verify/download/{cert.certificate_number}").status_code == 403
+
+    verify_res = anon.get(f"/certificates/verify?number={cert.certificate_number}")
+    assert verify_res.status_code == 200
+    assert b"AUTHENTIC CERTIFICATE" in verify_res.data
+    assert b"Cyber Security Masterclass" in verify_res.data
+    assert b"Bob Cyber" in verify_res.data
+    assert b"MIT Cyber Lab" in verify_res.data
+    assert cert.rendered_content.encode() in verify_res.data
+
+    preview_res = anon.get(f"/certificates/verify/preview/{cert.certificate_number}")
+    assert preview_res.status_code == 200
+    assert preview_res.data.startswith(b"%PDF")
+    download_res = anon.get(f"/certificates/verify/download/{cert.certificate_number}")
+    assert download_res.status_code == 200
+    assert download_res.data.startswith(b"%PDF")
+    assert f"filename={cert.certificate_number}.pdf" in download_res.headers.get("Content-Disposition", "")
+
+
+def test_public_form_event_card_rendering(client):
+    _register(client)
+    questions = [
+        {"id": "email", "title": "Email", "type": "email", "required": True, "options": []},
+        {"id": "name", "title": "Name", "type": "short_text", "required": True, "options": []},
+    ]
+    res = client.post(
+        "/forms/new",
+        data={
+            "title": "Hackathon 2026",
+            "description": "Annual hackathon event.",
+            "questions": json.dumps(questions),
+            "confirmation_subject": "Registered",
+            "confirmation_body": "Confirmed",
+            "event_start_at": "2026-12-01T10:00",
+            "event_end_at": "2026-12-01T18:00",
+            "event_timezone": "Asia/Kolkata",
+            "event_location": "https://meet.google.com/abc-defg-hij",
+            "event_url": "https://hackathon.example.com",
+            "publish": "yes",
+        },
+        follow_redirects=True,
+    )
+    assert res.status_code == 200
+    event_form = Form.query.filter_by(title="Hackathon 2026").first()
+    anon = client.application.test_client()
+    public_res = anon.get(f"/f/{event_form.public_id}")
+    assert public_res.status_code == 200
+    assert b"public-event-card" in public_res.data
+    assert b"EVENT DETAILS" in public_res.data
+    assert b"01 Dec 2026" in public_res.data
+    assert b"10:00 AM" in public_res.data
+    assert b"06:00 PM" in public_res.data
+    assert b"Asia/Kolkata" in public_res.data
+    assert b"https://meet.google.com/abc-defg-hij" in public_res.data
+    assert b"https://hackathon.example.com" in public_res.data
+
+    res_plain = client.post(
+        "/forms/new",
+        data={
+            "title": "General Survey",
+            "description": "Just a survey.",
+            "questions": json.dumps([
+                {"id": "email", "title": "Email", "type": "email", "required": True, "options": []},
+                {"id": "feedback", "title": "Feedback", "type": "short_text", "required": True, "options": []},
+            ]),
+            "confirmation_subject": "Registered",
+            "confirmation_body": "Confirmed",
+            "publish": "yes",
+        },
+        follow_redirects=True,
+    )
+    assert res_plain.status_code == 200
+    plain_form = Form.query.filter_by(title="General Survey").first()
+    plain_res = anon.get(f"/f/{plain_form.public_id}")
+    assert plain_res.status_code == 200
+    assert b"public-event-card" not in plain_res.data

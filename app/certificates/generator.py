@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import io
 from pathlib import Path
 import secrets
 
@@ -85,9 +86,13 @@ def generate_pdf(
     output_path,
     issue_date=None,
 ):
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    pdf = canvas.Canvas(str(output_path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    if hasattr(output_path, "write"):
+        canvas_target = output_path
+    else:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        canvas_target = str(output_path)
+    pdf = canvas.Canvas(canvas_target, pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
     center_x = PAGE_WIDTH / 2
     content_width = PAGE_WIDTH - 156
     issue_date = issue_date or datetime.now(timezone.utc).strftime("%d %B %Y")
@@ -180,3 +185,25 @@ def generate_pdf(
     pdf.drawString(84, 55, certificate_number)
     pdf.drawRightString(PAGE_WIDTH - 84, 55, issue_date)
     pdf.save()
+
+
+def generate_pdf_bytes(
+    title,
+    description,
+    name,
+    college_name,
+    certificate_number,
+    issue_date=None,
+):
+    buffer = io.BytesIO()
+    generate_pdf(
+        title=title,
+        description=description,
+        name=name,
+        college_name=college_name,
+        certificate_number=certificate_number,
+        output_path=buffer,
+        issue_date=issue_date,
+    )
+    buffer.seek(0)
+    return buffer

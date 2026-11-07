@@ -16,13 +16,29 @@
     {% if certificate %}
       <div class="certificate-verification-result is-valid" role="status">
         <p class="eyebrow">AUTHENTIC CERTIFICATE</p>
-        <h2>{{ batch.title }}</h2>
+        <h2>{{ certificate.effective_title or batch.title }}</h2>
         <dl>
           <div><dt>Recipient</dt><dd>{{ certificate.recipient_name }}</dd></div>
           <div><dt>Institution</dt><dd>{{ certificate.college_name }}</dd></div>
           <div><dt>Certificate number</dt><dd>{{ certificate.certificate_number }}</dd></div>
-          <div><dt>Issued</dt><dd>{{ certificate.created_at.strftime('%d %B %Y') }}</dd></div>
+          <div><dt>Issued</dt><dd>{{ certificate.effective_issue_date }}</dd></div>
         </dl>
+        <div class="certificate-content-box">
+          <p class="certificate-content-label">CERTIFICATE CONTENT</p>
+          <div class="certificate-content-text">{{ certificate.effective_rendered_content }}</div>
+        </div>
+        <div class="certificate-session-preview">
+          <p class="certificate-session-heading">CERTIFICATE PREVIEW (VERIFIED SESSION)</p>
+          <iframe
+            class="certificate-preview-frame"
+            src="{{ url_for('certificates.verify_preview_pdf', certificate_number=certificate.certificate_number) }}"
+            title="Certificate preview for {{ certificate.recipient_name }}"
+          ></iframe>
+          <div class="certificate-preview-actions">
+            <a class="button button-primary certificate-download" href="{{ url_for('certificates.verify_download_pdf', certificate_number=certificate.certificate_number) }}">Download certificate <span>↓</span></a>
+            <p class="certificate-session-note">Available for download in this verified session.</p>
+          </div>
+        </div>
       </div>
     {% elif searched %}
       <div class="certificate-verification-result is-invalid" role="status">

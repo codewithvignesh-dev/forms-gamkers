@@ -13,11 +13,13 @@ from flask import (
     render_template,
     request,
     send_file,
+    session,
     url_for,
 )
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
+from app.certificates.generator import generate_pdf_bytes
 from app.certificates.models import CertificateBatch, CertificateRecord, CertificateUpload
 from app.certificates.services import (
     create_certificate_batch,
@@ -403,6 +405,14 @@ def verify_certificate():
         ).first()
         if certificate:
             batch = db.session.get(CertificateBatch, certificate.batch_id)
+            verified_certs = session.get("verified_certificates", [])
+            if not isinstance(verified_certs, list):
+                verified_certs = []
+            if certificate.certificate_number not in verified_certs:
+                verified_certs.append(certificate.certificate_number)
+            session["verified_certificates"] = verified_certs
+            session[f"verified_cert_{certificate.certificate_number}"] = True
+            session.modified = True
     return render_template(
         "certificates/verify.html",
         certificate_number=certificate_number,
@@ -410,6 +420,74 @@ def verify_certificate():
         batch=batch,
         searched=bool(certificate_number),
     )
+
+
+@certificates.get("/verify/preview/<certificate_number>")
+def verify_preview_pdf(certificate_number):
+    verified_certs = session.get("verified_certificates", [])
+    if (
+        not isinstance(verified_certs, list)
+        or certificate_number not in verified_certs
+    ) and not session.get(f"verified_cert_{certificate_number}"):
+        abort(403)
+    certificate = CertificateRecord.query.filter_by(
+        certificate_number=certificate_number,
+        status="generated",
+    ).first_or_404()
+    pdf_buffer = generate_pdf_bytes(
+        title=certificate.effective_title,
+        description=certificate.effective_description,
+        name=certificate.recipient_name,
+        college_name=certificate.college_name,
+        certificate_number=certificate.certificate_number,
+        issue_date=certificate.effective_issue_date,
+    )
+    response = send_file(
+        pdf_buffer,
+        as_attachment=False,
+        download_name=f"{certificate.certificate_number}.pdf",
+        mimetype="application/pdf",
+        max_age=0,
+    )
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; style-src 'self'; script-src 'self'; "
+        "img-src 'self' data:; form-action 'self'; frame-ancestors 'self'; "
+        "base-uri 'self'; object-src 'self'"
+    )
+    return response
+
+
+@certificates.get("/verify/download/<certificate_number>")
+def verify_download_pdf(certificate_number):
+    verified_certs = session.get("verified_certificates", [])
+    if (
+        not isinstance(verified_certs, list)
+        or certificate_number not in verified_certs
+    ) and not session.get(f"verified_cert_{certificate_number}"):
+        abort(403)
+    certificate = CertificateRecord.query.filter_by(
+        certificate_number=certificate_number,
+        status="generated",
+    ).first_or_404()
+    pdf_buffer = generate_pdf_bytes(
+        title=certificate.effective_title,
+        description=certificate.effective_description,
+        name=certificate.recipient_name,
+        college_name=certificate.college_name,
+        certificate_number=certificate.certificate_number,
+        issue_date=certificate.effective_issue_date,
+    )
+    response = send_file(
+        pdf_buffer,
+        as_attachment=True,
+        download_name=f"{certificate.certificate_number}.pdf",
+        mimetype="application/pdf",
+        max_age=0,
+    )
+    response.headers["Cache-Control"] = "no-store, private"
+    return response
 
 
 @certificates.get("/public/<token>/pdf")
