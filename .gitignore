@@ -31,6 +31,7 @@ htmlcov/
 .ruff_cache/
 
 # Editors and temporary files
+*.log
 .vscode/
 .idea/
 tempCodeRunnerFile.py

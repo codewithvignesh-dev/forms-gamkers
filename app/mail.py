@@ -278,6 +278,20 @@ def smtp_settings(organization=None):
     return None
 
 
+def validate_smtp_host(host, port):
+    addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    public_addresses = []
+    for address in addresses:
+        ip = ipaddress.ip_address(address[4][0])
+        if not ip.is_global:
+            raise ValueError("SMTP host must resolve only to public IP addresses.")
+        if ip not in public_addresses:
+            public_addresses.append(ip)
+    if not public_addresses:
+        raise OSError("SMTP host did not resolve to an address.")
+    return str(public_addresses[0])
+
+
 def send_email(
     recipient,
     subject,
@@ -313,19 +327,7 @@ def send_email(
         )
     if settings["security"] not in {"starttls", "ssl"}:
         raise ValueError("SMTP must use STARTTLS or SSL/TLS.")
-    addresses = socket.getaddrinfo(
-        settings["host"], settings["port"], type=socket.SOCK_STREAM
-    )
-    public_addresses = []
-    for address in addresses:
-        ip = ipaddress.ip_address(address[4][0])
-        if not ip.is_global:
-            raise ValueError("SMTP host must resolve only to public IP addresses.")
-        if ip not in public_addresses:
-            public_addresses.append(ip)
-    if not public_addresses:
-        raise OSError("SMTP host did not resolve to an address.")
-    server_host = str(public_addresses[0])
+    server_host = validate_smtp_host(settings["host"], settings["port"])
     if settings["security"] == "ssl":
         server = smtplib.SMTP_SSL(timeout=15, context=context)
     else:

@@ -1,4 +1,5 @@
 from datetime import timedelta
+from functools import wraps
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -22,11 +23,15 @@ from app.utils import utcnow
 organization = Blueprint("organization", __name__)
 
 
-def require_admin():
-    if not current_user.is_org_admin:
-        flash("Only organisation admins can change these settings.", "error")
-        return redirect(url_for("main.dashboard"))
-    return None
+def require_admin(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not current_user.is_org_admin:
+            flash("Only organisation admins can change these settings.", "error")
+            return redirect(url_for("main.dashboard"))
+        return view(*args, **kwargs)
+
+    return wrapped
 
 
 @organization.route("/settings/organisation", methods=["GET", "POST"])
@@ -88,11 +93,9 @@ def email_settings():
 
 @organization.route("/team", methods=["GET", "POST"])
 @login_required
+@require_admin
 @limiter.limit("10 per hour", methods=["POST"])
 def team():
-    denied = require_admin()
-    if denied:
-        return denied
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         role = request.form.get("role", "contributor")
@@ -163,10 +166,8 @@ def team():
 
 @organization.post("/team/<int:user_id>/role")
 @login_required
+@require_admin
 def update_role(user_id):
-    denied = require_admin()
-    if denied:
-        return denied
     user = User.query.filter_by(
         id=user_id, organization_id=current_user.organization_id
     ).first_or_404()
@@ -185,10 +186,8 @@ def update_role(user_id):
 
 @organization.post("/team/permissions")
 @login_required
+@require_admin
 def update_permissions():
-    denied = require_admin()
-    if denied:
-        return denied
     role_permissions = {
         (item.role, item.permission): item
         for item in RolePermission.query.filter_by(

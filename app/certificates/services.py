@@ -12,7 +12,7 @@ from app.certificates.generator import (
     generate_public_token,
     render_description,
 )
-from app.certificates.models import CertificateBatch, CertificateRecord
+from app.certificates.models import CertificateBatch, CertificateRecord, CertificateUpload
 from app.extensions import db
 from app.mail import send_email
 from app.organization.models import Organization
@@ -264,5 +264,22 @@ def cleanup_expired_certificate_pdfs(limit=500):
             continue
         certificate.pdf_deleted_at = now
         removed += 1
+
+    upload_root = Path(current_app.config["CERTIFICATE_UPLOAD_PATH"]).resolve()
+    expired_uploads = db.session.scalars(
+        db.select(CertificateUpload)
+        .where(CertificateUpload.expires_at <= now)
+        .limit(limit)
+    ).all()
+    for staged in expired_uploads:
+        if staged.stored_filename:
+            upload_path = (upload_root / staged.stored_filename).resolve()
+            if upload_root in upload_path.parents and upload_path.is_file():
+                try:
+                    upload_path.unlink()
+                except OSError:
+                    logger.exception("Could not unlink expired staged upload file %s.", staged.id)
+        db.session.delete(staged)
+
     db.session.commit()
     return removed

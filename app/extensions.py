@@ -19,5 +19,6 @@ migrate = Migrate()
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"
 login_manager.login_message_category = "info"
+login_manager.session_protection = "strong"
 csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address, default_limits=["300 per hour"])
