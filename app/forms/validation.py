@@ -73,7 +73,10 @@ def validate_answers(questions, submitted):
         else:
             value = raw.strip() if isinstance(raw, str) else ""
             normalized = value
-            valid = len(value) <= 5000
+            max_length = (
+                180 if question["id"] in {"certificate_name", "college_name"} else 5000
+            )
+            valid = len(value) <= max_length
             is_empty = not value
             if question["type"] == "email" and value:
                 valid = valid and valid_email(value)

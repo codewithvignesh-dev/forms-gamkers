@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from datetime import datetime, timedelta
 from html import escape
@@ -472,35 +473,70 @@ def public_form(public_id):
     is_feedback_form = bool(form.parent_form_id)
     email_status = "skipped" if is_feedback_form else "not_configured"
     if recipient and not is_feedback_form:
-        subject = form.confirmation_subject.replace("{email}", recipient)
-        body = form.confirmation_body
-        for question in form.questions:
-            value = answers[question["id"]]
-            replacement = ", ".join(value) if isinstance(value, list) else str(value)
-            subject = subject.replace("{" + question["id"] + "}", replacement)
-            body = body.replace("{" + question["id"] + "}", replacement)
-        event_date = (
-            form.event_start_at.strftime("%d %B %Y") if form.event_start_at else ""
-        )
-        event_time = ""
-        if form.event_start_at:
-            event_time = form.event_start_at.strftime("%I:%M %p")
-            if form.event_end_at:
-                event_time += f"–{form.event_end_at.strftime('%I:%M %p')}"
-            event_time += f" {form.event_timezone}"
-        for placeholder, value in {
-            "event_date": event_date,
-            "event_time": event_time,
-            "event_location": form.event_location or "",
-            "event_url": form.event_url or "",
-        }.items():
-            subject = subject.replace("{" + placeholder + "}", value)
-            body = body.replace("{" + placeholder + "}", value)
-        if "\r" in subject or "\n" in subject:
-            subject = "Thanks for your response"
-        body = body.replace("{email}", recipient)
-        body = body.replace("{form_title}", form.title)
         try:
+            def _escape_body_value(raw_text):
+                if form.confirmation_format == "html":
+                    return escape(raw_text)
+                if form.confirmation_format == "markdown":
+                    return re.sub(
+                        r"([\\`*_{}\[\]()#+\-.!|<>])",
+                        r"\\\1",
+                        escape(raw_text),
+                    )
+                return raw_text
+
+            event_date = (
+                form.event_start_at.strftime("%d %B %Y") if form.event_start_at else ""
+            )
+            event_time = ""
+            if form.event_start_at:
+                event_time = form.event_start_at.strftime("%I:%M %p")
+                if form.event_end_at:
+                    event_time += f"–{form.event_end_at.strftime('%I:%M %p')}"
+                event_time += f" {form.event_timezone}"
+
+            subject_replacements = {
+                "email": recipient,
+                "form_title": form.title,
+                "event_date": event_date,
+                "event_time": event_time,
+                "event_location": form.event_location or "",
+                "event_url": form.event_url or "",
+            }
+            body_replacements = {
+                "email": _escape_body_value(recipient),
+                "form_title": _escape_body_value(form.title),
+                "event_date": _escape_body_value(event_date),
+                "event_time": _escape_body_value(event_time),
+                "event_location": _escape_body_value(form.event_location or ""),
+                "event_url": _escape_body_value(form.event_url or ""),
+            }
+            for question in form.questions:
+                value = answers[question["id"]]
+                replacement = (
+                    ", ".join(value) if isinstance(value, list) else str(value)
+                )
+                if question["id"] != "email":
+                    subject_replacements[question["id"]] = replacement
+                body_replacements[question["id"]] = _escape_body_value(replacement)
+
+            subject_pattern = re.compile(
+                "|".join(re.escape("{" + key + "}") for key in subject_replacements)
+            )
+            body_pattern = re.compile(
+                "|".join(re.escape("{" + key + "}") for key in body_replacements)
+            )
+            subject = subject_pattern.sub(
+                lambda match: subject_replacements[match.group(0)[1:-1]],
+                form.confirmation_subject,
+            )
+            body = body_pattern.sub(
+                lambda match: body_replacements[match.group(0)[1:-1]],
+                form.confirmation_body,
+            )
+            if "\r" in subject or "\n" in subject or len(subject) > 200:
+                subject = "Thanks for your response"
+
             email_args = (recipient, subject, body, form.organization)
             event_details = None
             calendar_event = None

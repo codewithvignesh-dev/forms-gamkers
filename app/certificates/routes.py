@@ -506,6 +506,7 @@ def public_certificate_pdf(token):
         max_age=0,
     )
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Cache-Control"] = "no-store, private"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; style-src 'self'; script-src 'self'; "
         "img-src 'self' data:; form-action 'self'; frame-ancestors 'self'; "
@@ -522,10 +523,12 @@ def download_public_certificate(token):
     pdf_path = _public_pdf_path(certificate)
     if pdf_path is None:
         return render_template("errors/404.html"), 404
-    return send_file(
+    response = send_file(
         pdf_path,
         as_attachment=True,
         download_name=f"{certificate.certificate_number}.pdf",
         mimetype="application/pdf",
         max_age=0,
     )
+    response.headers["Cache-Control"] = "no-store, private"
+    return response

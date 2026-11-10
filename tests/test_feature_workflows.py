@@ -886,3 +886,210 @@ def test_public_form_event_card_rendering(client):
     plain_res = anon.get(f"/f/{plain_form.public_id}")
     assert plain_res.status_code == 200
     assert b"public-event-card" not in plain_res.data
+
+
+def test_public_form_confirmation_prevents_recursive_placeholder_expansion_and_caps_subject(
+    client, monkeypatch
+):
+    _register(client)
+    questions = [
+        {"id": "q_000000000001", "title": "First", "type": "short_text", "required": True, "options": []},
+        {"id": "q_000000000002", "title": "Second", "type": "short_text", "required": True, "options": []},
+        {"id": "q_000000000003", "title": "Third", "type": "short_text", "required": True, "options": []},
+        {"id": "email", "title": "Email", "type": "email", "required": True, "options": []},
+    ]
+    res = client.post(
+        "/forms/new",
+        data={
+            "title": "Single Pass Form",
+            "questions": json.dumps(questions),
+            "confirmation_subject": "Receipt for {email} - {q_000000000001}",
+            "confirmation_body": "Hello {q_000000000001}",
+            "confirmation_format": "text",
+            "publish": "yes",
+        },
+        follow_redirects=True,
+    )
+    assert res.status_code == 200
+    form = Form.query.filter_by(title="Single Pass Form").one()
+
+    captured = []
+    monkeypatch.setattr(
+        "app.forms.routes.send_email",
+        lambda *args, **kwargs: captured.append((args, kwargs)) or True,
+    )
+    anon = client.application.test_client()
+    response = anon.post(
+        f"/f/{form.public_id}",
+        data={
+            "q_000000000001": "{q_000000000002}" * 312,
+            "q_000000000002": "{q_000000000003}" * 10,
+            "q_000000000003": "A" * 5000,
+            "email": "{q_000000000002}@example.com",
+        },
+    )
+    assert response.status_code == 303
+    assert len(captured) == 1
+    _recipient, subject, body, _org = captured[0][0]
+    assert subject == "Thanks for your response"
+    assert len(body) == len("Hello ") + 312 * len("{q_000000000002}")
+    assert "AAAAA" not in body
+
+
+def test_public_form_confirmation_escapes_html_and_markdown_links_in_answers(
+    app, client, monkeypatch
+):
+    _register(client)
+    questions = [
+        {"id": "email", "title": "Email", "type": "email", "required": True, "options": []},
+        {"id": "name", "title": "Name", "type": "short_text", "required": True, "options": []},
+    ]
+    for fmt in ("html", "markdown"):
+        client.post(
+            "/forms/new",
+            data={
+                "title": f"Format {fmt}",
+                "questions": json.dumps(questions),
+                "confirmation_subject": "Welcome {name}",
+                "confirmation_body": (
+                    "<p>Hi {name}</p>" if fmt == "html" else "Hi **{name}**"
+                ),
+                "confirmation_format": fmt,
+                "publish": "yes",
+            },
+            follow_redirects=True,
+        )
+    html_form = Form.query.filter_by(title="Format html").one()
+    md_form = Form.query.filter_by(title="Format markdown").one()
+
+    captured = []
+    monkeypatch.setattr(
+        "app.forms.routes.send_email",
+        lambda *args, **kwargs: captured.append((args, kwargs)) or True,
+    )
+    anon = client.application.test_client()
+    anon.post(
+        f"/f/{html_form.public_id}",
+        data={
+            "email": "victim1@example.com",
+            "name": 'Victim <a href="https://attacker.example/phish">Verify</a>',
+        },
+    )
+    anon.post(
+        f"/f/{md_form.public_id}",
+        data={
+            "email": "victim2@example.com",
+            "name": "Victim [Verify](https://attacker.example/phish)",
+        },
+    )
+    assert len(captured) == 2
+    with app.app_context():
+        org = SimpleNamespace(
+            name="Northstar Events",
+            smtp_host="mail.example.com",
+            smtp_port=587,
+            smtp_username=None,
+            smtp_password_encrypted=None,
+            smtp_sender="no-reply@example.com",
+            smtp_security="starttls",
+        )
+        for args, _kwargs in captured:
+            recipient, subject, body = args[0], args[1], args[2]
+            fmt = "html" if recipient == "victim1@example.com" else "markdown"
+            msg, _, _ = _styled_email(recipient, subject, body, org, fmt)
+            html_part = msg.get_body(preferencelist=("html",)).get_content()
+            assert '<a href="https://attacker.example/phish"' not in html_part
+            assert 'href="https://attacker.example/phish">' not in html_part
+
+
+def test_save_banner_restricts_formats_and_strips_metadata(app, tmp_path, monkeypatch):
+    from PIL import Image, XbmImagePlugin
+    from werkzeug.datastructures import FileStorage
+    from app.forms.banner_storage import save_banner
+
+    app.config["FORM_BANNER_STORAGE_PATH"] = str(tmp_path / "banners")
+
+    def forbid_xbm(*_args, **_kwargs):
+        raise AssertionError("XbmImagePlugin._open must not be invoked")
+
+    monkeypatch.setattr(XbmImagePlugin.XbmImageFile, "_open", forbid_xbm)
+
+    with app.app_context():
+        xbm_upload = FileStorage(
+            stream=io.BytesIO(b"#define width 10\n#define height 10\nstatic char bits[] = {0};"),
+            filename="exploit.xbm",
+        )
+        with pytest.raises(ValueError, match="JPEG, PNG or WebP"):
+            save_banner(xbm_upload)
+
+        jpeg_buf = io.BytesIO()
+        Image.new("RGB", (64, 64), "#123456").save(
+            jpeg_buf,
+            format="JPEG",
+            icc_profile=b"P" * 1024,
+            comment=b"untrusted-comment",
+        )
+        jpeg_upload = FileStorage(
+            stream=io.BytesIO(jpeg_buf.getvalue()),
+            filename="banner.jpg",
+        )
+        saved_name = save_banner(jpeg_upload)
+        saved_path = Path(app.config["FORM_BANNER_STORAGE_PATH"]) / saved_name
+        with Image.open(saved_path) as saved_img:
+            assert "icc_profile" not in saved_img.info
+            assert "comment" not in saved_img.info
+
+
+def test_smtp_settings_clears_stored_password_when_host_changes_without_new_password(
+    app, client
+):
+    from app.models import Organization
+
+    app.config["SMTP_ENCRYPTION_KEY"] = "rZ1Hn1Z5Q_4C2v1h5T-cK9qN7fE3jP0wX6sB4vM8lD8="
+    _register(client)
+    client.post(
+        "/settings/email",
+        data={
+            "host": "mail.gamkers.in",
+            "port": "587",
+            "sender": "noreply@gamkers.in",
+            "username": "smtp@gamkers.in",
+            "password": "InitialSecretPassword!",
+            "security": "starttls",
+        },
+        follow_redirects=True,
+    )
+    org = db.session.scalar(db.select(Organization))
+    assert org.smtp_password_encrypted is not None
+
+    # Updating port on the same host and username preserves the password
+    client.post(
+        "/settings/email",
+        data={
+            "host": "mail.gamkers.in",
+            "port": "2525",
+            "sender": "noreply@gamkers.in",
+            "username": "smtp@gamkers.in",
+            "password": "",
+            "security": "starttls",
+        },
+        follow_redirects=True,
+    )
+    db.session.refresh(org)
+    assert org.smtp_password_encrypted is not None
+
+    # Changing smtp_host without supplying a password clears the stored password
+    client.post(
+        "/settings/email",
+        data={
+            "host": "external.example.com",
+            "port": "587",
+            "sender": "noreply@gamkers.in",
+            "username": "smtp@gamkers.in",
+            "password": "",
+            "security": "starttls",
+        },
+        follow_redirects=True,
+    )
+    db.session.refresh(org)
+    assert org.smtp_password_encrypted is None

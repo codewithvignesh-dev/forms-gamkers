@@ -68,7 +68,7 @@ def email_settings():
             port = int(request.form.get("port", ""))
         except ValueError:
             port = 0
-        if not host or len(host) > 255 or not 1 <= port <= 65535:
+        if not host or len(host) > 255 or len(username) > 255 or not 1 <= port <= 65535:
             flash("Enter a valid SMTP host and port.", "error")
         elif not valid_email(sender) or security not in {"starttls", "ssl"}:
             flash("Enter a valid sender address and connection security.", "error")
@@ -78,6 +78,9 @@ def email_settings():
             except RuntimeError as error:
                 flash(str(error), "error")
                 return render_template("organization/email_settings.html", organization=org)
+            credentials_target_changed = (
+                org.smtp_host != host or org.smtp_username != (username or None)
+            )
             org.smtp_host = host
             org.smtp_port = port
             org.smtp_username = username or None
@@ -85,6 +88,8 @@ def email_settings():
             org.smtp_security = security
             if password:
                 org.smtp_password_encrypted = encrypted_password
+            elif credentials_target_changed or not username:
+                org.smtp_password_encrypted = None
             db.session.commit()
             flash("SMTP settings saved. The password is never shown again.", "success")
             return redirect(url_for("organization.email_settings"))

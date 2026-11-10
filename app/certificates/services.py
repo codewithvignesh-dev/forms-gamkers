@@ -1,6 +1,7 @@
 from html import escape
 from pathlib import Path
 import logging
+import zipfile
 from datetime import timedelta
 
 import pandas as pd
@@ -57,9 +58,18 @@ def read_recipients(file_or_path, filename):
         if extension == ".csv":
             dataframe = pd.read_csv(file_or_path, nrows=current_app.config["CERTIFICATE_MAX_RECORDS"] + 1)
         else:
+            if extension == ".xlsx":
+                with zipfile.ZipFile(file_or_path) as archive:
+                    total_uncompressed = sum(info.file_size for info in archive.infolist())
+                    if len(archive.infolist()) > 256 or total_uncompressed > 32 * 1024 * 1024:
+                        raise ValueError("The uploaded spreadsheet exceeds safe size limits.")
+                if hasattr(file_or_path, "seek"):
+                    file_or_path.seek(0)
             dataframe = pd.read_excel(
                 file_or_path, nrows=current_app.config["CERTIFICATE_MAX_RECORDS"] + 1
             )
+    except ValueError:
+        raise
     except Exception as error:
         raise ValueError("The uploaded recipient file could not be read.") from error
     if dataframe.empty:
