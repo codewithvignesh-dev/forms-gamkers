@@ -384,38 +384,37 @@ def test_closing_registration_creates_feedback_form_and_generates_permanent_cert
     )
     assert certificate.issue_date is not None
 
-    verified = client.get(
-        f"/certificates/verify?number={certificate.certificate_number}"
-    )
+    # Verification uses the unguessable public token, not the certificate number.
+    verify_url = f"/certificates/verify?token={certificate.public_token}"
+    verified = client.get(verify_url)
+    assert verified.status_code == 200
     assert b"AUTHENTIC CERTIFICATE" in verified.data
     assert b"Alex Attendee" in verified.data
     assert (
         f"Presented to Alex Attendee from Northstar Institute. No. {certificate.certificate_number}.".encode()
         in verified.data
     )
-    assert f"/certificates/verify/preview/{certificate.certificate_number}".encode() in verified.data
-    assert f"/certificates/verify/download/{certificate.certificate_number}".encode() in verified.data
 
-    session_preview = client.get(
+    # A certificate number alone must not reveal or verify a certificate.
+    number_only = client.get(
+        f"/certificates/verify?number={certificate.certificate_number}"
+    )
+    assert b"AUTHENTIC CERTIFICATE" not in number_only.data
+
+    # The removed session-scoped routes must not be available.
+    assert client.get(
         f"/certificates/verify/preview/{certificate.certificate_number}"
-    )
-    assert session_preview.status_code == 200
-    assert session_preview.data.startswith(b"%PDF")
-    session_download = client.get(
+    ).status_code == 404
+    assert client.get(
         f"/certificates/verify/download/{certificate.certificate_number}"
-    )
-    assert session_download.status_code == 200
-    assert session_download.data.startswith(b"%PDF")
+    ).status_code == 404
 
+    # The public token works independently of the issuing user's session.
     other_client = client.application.test_client()
-    unverified_preview = other_client.get(
-        f"/certificates/verify/preview/{certificate.certificate_number}"
-    )
-    assert unverified_preview.status_code == 403
-    unverified_download = other_client.get(
-        f"/certificates/verify/download/{certificate.certificate_number}"
-    )
-    assert unverified_download.status_code == 403
+    anonymous_verified = other_client.get(verify_url)
+    assert anonymous_verified.status_code == 200
+    assert b"AUTHENTIC CERTIFICATE" in anonymous_verified.data
+    assert b"Alex Attendee" in anonymous_verified.data
 
     certificate.pdf_expires_at = utcnow() - timedelta(seconds=1)
     db.session.commit()
@@ -426,9 +425,9 @@ def test_closing_registration_creates_feedback_form_and_generates_permanent_cert
     assert "Deleted 1 expired certificate PDF" in cleanup.output
     assert not pdf_path.exists()
     assert certificate.pdf_deleted_at is not None
-    verified_after = client.get(
-        f"/certificates/verify?number={certificate.certificate_number}"
-    )
+
+    # Metadata verification remains available after the stored PDF expires.
+    verified_after = client.get(verify_url)
     assert verified_after.status_code == 200
     assert b"Alex Attendee" in verified_after.data
     assert (
@@ -438,18 +437,9 @@ def test_closing_registration_creates_feedback_form_and_generates_permanent_cert
     assert client.get(
         f"/certificates/public/{certificate.public_token}/pdf"
     ).status_code == 410
-
-    # Even after disk PDF is removed, verified session dynamically generates preview and download
-    preview_after = client.get(
-        f"/certificates/verify/preview/{certificate.certificate_number}"
-    )
-    assert preview_after.status_code == 200
-    assert preview_after.data.startswith(b"%PDF")
-    download_after = client.get(
-        f"/certificates/verify/download/{certificate.certificate_number}"
-    )
-    assert download_after.status_code == 200
-    assert download_after.data.startswith(b"%PDF")
+    assert client.get(
+        f"/certificates/public/{certificate.public_token}/download"
+    ).status_code == 410
 
     second_batch = client.post(
         f"/certificates/forms/{event_form.id}/generate",
@@ -783,7 +773,9 @@ def test_calendar_confirmation_has_styled_google_link_and_ics_attachment(app, mo
         assert sent_messages[0].get_body(preferencelist=("html",)).get_content_type() == "text/html"
 
 
-def test_certificate_full_content_saved_and_session_download(app, client, tmp_path, monkeypatch):
+def test_certificate_full_content_saved_and_public_token_verification(
+    app, client, tmp_path, monkeypatch
+):
     app.config["CERTIFICATE_STORAGE_PATH"] = str(tmp_path / "private-certs")
     monkeypatch.setattr("app.certificates.services.send_email", lambda *a, **k: True)
     _register(client)
@@ -807,12 +799,19 @@ def test_certificate_full_content_saved_and_session_download(app, client, tmp_pa
     assert "Bob Cyber" in cert.rendered_content
     assert "MIT Cyber Lab" in cert.rendered_content
     assert cert.issue_date is not None
+    assert cert.public_token
 
     anon = client.application.test_client()
-    assert anon.get(f"/certificates/verify/preview/{cert.certificate_number}").status_code == 403
-    assert anon.get(f"/certificates/verify/download/{cert.certificate_number}").status_code == 403
 
-    verify_res = anon.get(f"/certificates/verify?number={cert.certificate_number}")
+    # Certificate numbers and removed session-scoped routes cannot grant access.
+    assert anon.get(
+        f"/certificates/verify/preview/{cert.certificate_number}"
+    ).status_code == 404
+    assert anon.get(
+        f"/certificates/verify/download/{cert.certificate_number}"
+    ).status_code == 404
+
+    verify_res = anon.get(f"/certificates/verify?token={cert.public_token}")
     assert verify_res.status_code == 200
     assert b"AUTHENTIC CERTIFICATE" in verify_res.data
     assert b"Cyber Security Masterclass" in verify_res.data
@@ -820,13 +819,18 @@ def test_certificate_full_content_saved_and_session_download(app, client, tmp_pa
     assert b"MIT Cyber Lab" in verify_res.data
     assert cert.rendered_content.encode() in verify_res.data
 
-    preview_res = anon.get(f"/certificates/verify/preview/{cert.certificate_number}")
+    # Public PDF access is authorized by the unguessable token.
+    preview_res = anon.get(f"/certificates/public/{cert.public_token}/pdf")
     assert preview_res.status_code == 200
     assert preview_res.data.startswith(b"%PDF")
-    download_res = anon.get(f"/certificates/verify/download/{cert.certificate_number}")
+    download_res = anon.get(
+        f"/certificates/public/{cert.public_token}/download"
+    )
     assert download_res.status_code == 200
     assert download_res.data.startswith(b"%PDF")
-    assert f"filename={cert.certificate_number}.pdf" in download_res.headers.get("Content-Disposition", "")
+    assert f"filename={cert.certificate_number}.pdf" in download_res.headers.get(
+        "Content-Disposition", ""
+    )
 
 
 def test_public_form_event_card_rendering(client):
