@@ -19,7 +19,7 @@
     <p class="certificate-expired">The PDF download period has ended. The certificate record remains available for verification.</p>
     {% endif %}
     <p class="certificate-number">CERTIFICATE NUMBER <strong>{{ certificate.certificate_number }}</strong></p>
-    <a class="button button-outline" href="{{ url_for('certificates.verify_certificate', number=certificate.certificate_number) }}">Verify certificate details</a>
+    <a class="button button-outline" href="{{ url_for('certificates.verify_certificate', token=certificate.public_token) }}">Verify certificate details</a>
   </div>
   <p class="powered-by">Issued with <span class="brand-mark">✳</span> GAMKERS PORTAL</p>
 </section>

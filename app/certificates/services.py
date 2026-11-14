@@ -142,7 +142,22 @@ def create_certificate_batch(
         )
         db.session.add(certificate)
         db.session.flush()
-        certificate.certificate_number = generate_certificate_number(certificate.id)
+
+        # The database UNIQUE constraint is the final safeguard. This lookup
+        # also avoids the overwhelmingly unlikely random-code collision.
+        for _ in range(5):
+            candidate_number = generate_certificate_number()
+            existing = db.session.scalar(
+                db.select(CertificateRecord.id).where(
+                    CertificateRecord.certificate_number == candidate_number
+                )
+            )
+            if existing is None:
+                certificate.certificate_number = candidate_number
+                break
+        else:
+            raise RuntimeError("Could not allocate a unique certificate number.")
+
         certificate.pdf_expires_at = certificate.created_at + timedelta(
             days=current_app.config["CERTIFICATE_PDF_RETENTION_DAYS"]
         )
