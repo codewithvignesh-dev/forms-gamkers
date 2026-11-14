@@ -78,6 +78,7 @@ Use these values for `SECRET_KEY`, `SMTP_ENCRYPTION_KEY`, and
 | `DB_HOST`, `DB_PORT` | MySQL/MariaDB server connection |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Application database credentials |
 | `APPLICATION_BASE_URL` | Public base URL used for generated links |
+| `APP_ENV` | `production` (default) or `development`. Production sends session cookies over HTTPS only; set `development` in your local `.env` to sign in over plain `http://localhost` |
 | `INITIAL_ADMIN_NAME` | Initial administrator's display name |
 | `INITIAL_ADMIN_EMAIL` | Initial administrator's login email |
 | `INITIAL_ADMIN_PASSWORD` | Initial administrator's password |

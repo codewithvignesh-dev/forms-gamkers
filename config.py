@@ -2,6 +2,9 @@ import os
 
 
 class Config:
+    """Settings shared by every environment. Safe by default; see the subclasses."""
+
+    APP_ENV = "production"
     SECRET_KEY = os.getenv("SECRET_KEY")
     DB_HOST = os.getenv("DB_HOST")
     DB_PORT = os.getenv("DB_PORT", "3306")
@@ -19,9 +22,9 @@ class Config:
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    SESSION_COOKIE_SECURE = os.getenv("SECURE_COOKIES", "0") == "1"
+    SESSION_COOKIE_SECURE = True
     REMEMBER_COOKIE_HTTPONLY = True
-    REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
+    REMEMBER_COOKIE_SECURE = True
     WTF_CSRF_ENABLED = True
     WTF_CSRF_TIME_LIMIT = 3600
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
@@ -48,3 +51,36 @@ class Config:
     INITIAL_ADMIN_NAME = os.getenv("INITIAL_ADMIN_NAME")
     INITIAL_ADMIN_EMAIL = os.getenv("INITIAL_ADMIN_EMAIL")
     INITIAL_ADMIN_PASSWORD = os.getenv("INITIAL_ADMIN_PASSWORD")
+
+
+class DevelopmentConfig(Config):
+    """Local development over plain HTTP (APP_ENV=development)."""
+
+    APP_ENV = "development"
+    SESSION_COOKIE_SECURE = False
+    REMEMBER_COOKIE_SECURE = False
+
+
+class ProductionConfig(Config):
+    """Live deployment behind HTTPS (APP_ENV=production, the default)."""
+
+    APP_ENV = "production"
+    SESSION_COOKIE_SECURE = True
+    REMEMBER_COOKIE_SECURE = True
+
+
+ENVIRONMENTS = {
+    "development": DevelopmentConfig,
+    "production": ProductionConfig,
+}
+
+
+def get_config():
+    """Pick the config class from APP_ENV. Unset means production, never development."""
+    name = os.getenv("APP_ENV", "production").strip().lower()
+    try:
+        return ENVIRONMENTS[name]
+    except KeyError:
+        raise RuntimeError(
+            f"APP_ENV must be 'development' or 'production', not {name!r}."
+        ) from None

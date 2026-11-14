@@ -15,6 +15,8 @@ def app(tmp_path):
             "CERTIFICATE_STORAGE_PATH": str(tmp_path / "certificates"),
             "CERTIFICATE_UPLOAD_PATH": str(tmp_path / "certificate-uploads"),
             "FORM_BANNER_STORAGE_PATH": str(tmp_path / "form-banners"),
+            "SESSION_COOKIE_SECURE": False,  # the test client talks plain HTTP
+            "REMEMBER_COOKIE_SECURE": False,
             "WTF_CSRF_ENABLED": False,
             "RATELIMIT_ENABLED": False,
             "SMTP_ENCRYPTION_KEY": None,

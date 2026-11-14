@@ -4,6 +4,8 @@ import socket
 from datetime import timedelta
 from types import SimpleNamespace
 
+import pytest
+
 from app.extensions import db
 from app.models import Form, Organization, PasswordReset, RolePermission, User, utcnow
 from app.security import hash_token
@@ -314,3 +316,46 @@ def test_hsts_present_on_csrf_failure(app):
     response = client.post("/login", data={})  # unga login URL ah podunga
     assert response.status_code == 400
     assert response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_env", "expected_secure"),
+    [
+        (None, "production", True),
+        ("production", "production", True),
+        (" Production ", "production", True),
+        ("development", "development", False),
+        ("DEVELOPMENT", "development", False),
+    ],
+)
+def test_app_env_selects_environment_settings(
+    monkeypatch, tmp_path, value, expected_env, expected_secure
+):
+    from app import create_app
+
+    if value is None:
+        monkeypatch.delenv("APP_ENV", raising=False)
+    else:
+        monkeypatch.setenv("APP_ENV", value)
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "test-key-not-for-production",
+            "SQLALCHEMY_DATABASE_URI": "sqlite://",
+            "CERTIFICATE_STORAGE_PATH": str(tmp_path / "certificates"),
+            "CERTIFICATE_UPLOAD_PATH": str(tmp_path / "certificate-uploads"),
+            "FORM_BANNER_STORAGE_PATH": str(tmp_path / "form-banners"),
+        }
+    )
+    assert app.config["APP_ENV"] == expected_env
+    assert app.config["SESSION_COOKIE_SECURE"] is expected_secure
+    assert app.config["REMEMBER_COOKIE_SECURE"] is expected_secure
+
+
+@pytest.mark.parametrize("value", ["staging", "prod", "", "1"])
+def test_unknown_app_env_is_rejected(monkeypatch, value):
+    from config import get_config
+
+    monkeypatch.setenv("APP_ENV", value)
+    with pytest.raises(RuntimeError, match="APP_ENV"):
+        get_config()

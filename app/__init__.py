@@ -10,15 +10,28 @@ from sqlalchemy.engine import URL
 
 load_dotenv()
 
-from config import Config
+from config import get_config
 from app.extensions import csrf, db, limiter, login_manager, migrate
+
+
+def _warn_about_weak_production_settings(app):
+    base_url = app.config.get("APPLICATION_BASE_URL")
+    if base_url and not base_url.lower().startswith("https://"):
+        app.logger.warning("APPLICATION_BASE_URL should start with https:// in production.")
+    if str(app.config.get("RATELIMIT_STORAGE_URI", "")).startswith("memory://"):
+        app.logger.warning(
+            "RATELIMIT_STORAGE_URI is in-memory: each worker keeps its own limits. "
+            "Use a shared backend such as redis:// in production."
+        )
 
 
 def create_app(test_config=None):
     app = Flask(__name__)
-    app.config.from_object(Config)
+    app.config.from_object(get_config())
     if test_config:
         app.config.update(test_config)
+    if app.config["APP_ENV"] == "production" and not app.config.get("TESTING"):
+        _warn_about_weak_production_settings(app)
     if not app.config.get("SECRET_KEY") and not app.config.get("TESTING"):
         raise RuntimeError("Set SECRET_KEY before starting the application.")
     if not app.config.get("SQLALCHEMY_DATABASE_URI"):
