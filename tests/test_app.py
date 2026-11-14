@@ -307,3 +307,10 @@ def test_admin_can_change_role_permissions_without_granting_admin_privilege(
     assert b"Choose the developer or contributor role" in response.data
     with app.app_context():
         assert db.session.get(User, user_id).role == "contributor"
+
+def test_hsts_present_on_csrf_failure(app):
+    app.config["WTF_CSRF_ENABLED"] = True
+    client = app.test_client()
+    response = client.post("/login", data={})  # unga login URL ah podunga
+    assert response.status_code == 400
+    assert response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"

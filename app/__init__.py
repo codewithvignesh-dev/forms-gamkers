@@ -186,13 +186,15 @@ def create_app(test_config=None):
 
     @app.after_request
     def set_security_headers(response):
+        nonce = getattr(g, "csp_nonce", None)
+        style_src = f"'self' 'nonce-{nonce}'" if nonce else "'self'"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; "
-            f"style-src 'self' 'nonce-{g.csp_nonce}'; script-src 'self'; "
+            f"default-src 'self'; style-src {style_src}; script-src 'self'; "
             "img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; "
             "base-uri 'self'; object-src 'none'",
         )
